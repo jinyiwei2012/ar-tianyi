@@ -1,0 +1,25 @@
+# CodeGraph 本地索引（每台机器独立，不入库）
+.codegraph/
+
+# OS / 编辑器
+.DS_Store
+Thumbs.db
+*.suo
+.vscode/
+.idea/
+
+# Unity（未来 AR 工程）
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+MemoryCaptures/
+*.csproj
+*.sln
+*.user
+
+# Live2D 工具链缓存
+*.log
