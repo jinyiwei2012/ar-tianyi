@@ -1,6 +1,9 @@
 # CodeGraph 本地索引（每台机器独立，不入库）
 .codegraph/
 
+# 代理工具运行时状态
+.omo/
+
 # OS / 编辑器
 .DS_Store
 Thumbs.db
