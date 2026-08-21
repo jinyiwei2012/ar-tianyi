@@ -51,11 +51,28 @@ public static class AndroidBuild
 
     private static void ConfigureToolchainPaths()
     {
-        // 本机工具链位置（Unity 6 正确 API: jdkRootPath/sdkRootPath/ndkRootPath）
-        AndroidExternalToolsSettings.jdkRootPath = @"C:\Program Files\Unity 6000.3.22f1\jdk";
-        AndroidExternalToolsSettings.sdkRootPath = @"C:\Users\Administrator\AppData\Local\Android\Sdk";
-        AndroidExternalToolsSettings.ndkRootPath = @"C:\Users\Administrator\AppData\Local\Android\Sdk\ndk\27.2.12479018";
-        Debug.Log($"[AndroidBuild] 工具链路径已设置: JDK={AndroidExternalToolsSettings.jdkRootPath} SDK={AndroidExternalToolsSettings.sdkRootPath} NDK={AndroidExternalToolsSettings.ndkRootPath}");
+        // 工具链路径优先级: 环境变量(CI 用) > 本机硬编码(手动安装)
+        // CI(GameCI unityci/editor 镜像)自带 Unity Hub 安装的 JDK/SDK/NDK，设置环境变量即可覆盖
+        var jdk = Environment.GetEnvironmentVariable("UNITY_JDK_PATH")
+                  ?? @"C:\Program Files\Unity 6000.3.22f1\jdk";
+        var sdk = Environment.GetEnvironmentVariable("ANDROID_SDK_ROOT")
+                  ?? @"C:\Users\Administrator\AppData\Local\Android\Sdk";
+        var ndk = Environment.GetEnvironmentVariable("ANDROID_NDK_ROOT")
+                  ?? @"C:\Users\Administrator\AppData\Local\Android\Sdk\ndk\27.2.12479018";
+
+        // 环境变量未设置时，让 Unity 自动探测（CI 镜像内置工具链）
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("UNITY_JDK_PATH")) &&
+            string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ANDROID_SDK_ROOT")) &&
+            string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ANDROID_NDK_ROOT")))
+        {
+            Debug.Log("[AndroidBuild] 未检测到 CI 环境变量，使用 Unity 自动探测工具链");
+            return;
+        }
+
+        AndroidExternalToolsSettings.jdkRootPath = jdk;
+        AndroidExternalToolsSettings.sdkRootPath = sdk;
+        AndroidExternalToolsSettings.ndkRootPath = ndk;
+        Debug.Log($"[AndroidBuild] 工具链路径已设置: JDK={jdk} SDK={sdk} NDK={ndk}");
     }
 
     private static void ConfigurePlayerSettings()
