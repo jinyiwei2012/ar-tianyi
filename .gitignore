@@ -23,6 +23,24 @@ MemoryCaptures/
 *.csproj
 *.sln
 *.user
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
 
-# Live2D 工具链缓存
-*.log
+# Unity 6 特定
+[Bb]urstCache/
+[Pp]ackages/package-lock.json.backup
+ProjectSettings/ProjectSettings.asset.bak
+sysinfo.txt
+crashlytics-build.properties
+
+# IDE
+.idea/
+.vs/
+.vscode/
+*.csproj
+*.sln
