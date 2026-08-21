@@ -10,7 +10,7 @@ name: Build APK
 
 on:
   push:
-    branches: [main]
+    branches: [release/v1.0.0]   # 仅在发布分支触发
     paths:
       - 'LuoTianyiAR/Assets/**'
       - 'LuoTianyiAR/Packages/**'
