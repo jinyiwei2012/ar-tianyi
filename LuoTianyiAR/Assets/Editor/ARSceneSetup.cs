@@ -60,10 +60,34 @@ public static class ARSceneSetup
         originGo.AddComponent<ARPlaneManager>();
         originGo.AddComponent<ARRaycastManager>();
 
-        // 4. 保存场景
+        // 4. 遮挡 (Phase 3): AROcclusionManager + 运行时降级控制
+        originGo.AddComponent<AROcclusionManager>();
+        originGo.AddComponent<OcclusionController>();
+
+        // 5. 保存场景
         if (!AssetDatabase.IsValidFolder("Assets/Scenes"))
             AssetDatabase.CreateFolder("Assets", "Scenes");
         EditorSceneManager.SaveScene(scene, "Assets/Scenes/ARScene.unity");
-        Debug.Log("[ARSceneSetup] ARScene created: XR Origin + AR Session + PlaneManager + RaycastManager");
+        Debug.Log("[ARSceneSetup] ARScene created: XR Origin + AR Session + PlaneManager + RaycastManager + Occlusion");
+    }
+
+    /// 给已存在的 ARScene 补挂遮挡组件（不重建场景）
+    public static void AddOcclusion()
+    {
+        var scene = EditorSceneManager.OpenScene("Assets/Scenes/ARScene.unity");
+        var originGo = GameObject.Find("XR Origin");
+        if (originGo == null)
+        {
+            Debug.LogError("[ARSceneSetup] 未找到 XR Origin");
+            return;
+        }
+
+        if (originGo.GetComponent<AROcclusionManager>() == null)
+            originGo.AddComponent<AROcclusionManager>();
+        if (originGo.GetComponent<OcclusionController>() == null)
+            originGo.AddComponent<OcclusionController>();
+
+        EditorSceneManager.SaveScene(scene);
+        Debug.Log("[ARSceneSetup] AROcclusionManager + OcclusionController 已挂到 XR Origin");
     }
 }
