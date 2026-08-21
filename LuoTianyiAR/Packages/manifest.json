@@ -1,6 +1,9 @@
 {
   "dependencies": {
     "com.unity.multiplayer.center": "1.0.1",
+    "com.unity.xr.arfoundation": "6.3.5",
+    "com.unity.xr.arcore": "6.3.5",
+    "com.unity.xr.management": "4.5.0",
     "com.unity.render-pipelines.universal": "17.2.0",
     "com.unity.inputsystem": "1.11.2",
     "com.unity.ugui": "2.0.0",
