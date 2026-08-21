@@ -1,0 +1,66 @@
+# build-apk.yml — GitHub Actions 编译洛天依 AR App (Unity 6000.3.22f1 → Android APK)
+#
+# 使用方法:
+#   1. 本地生成 Unity License 文件(.ulf) → 添加到 GitHub Secrets 名为 UNITY_LICENSE
+#   2. push 到 main 或手动触发 (Actions → Build APK → Run workflow)
+#
+# 依赖镜像: unityci/editor:ubuntu-6000.3.22f1-android-3 (GameCI 官方维护)
+
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'LuoTianyiAR/Assets/**'
+      - 'LuoTianyiAR/Packages/**'
+      - 'LuoTianyiAR/ProjectSettings/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:        # 允许手动触发
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest   # 标准 runner: 4 vCPU / 16GB RAM，Unity 6 IL2CPP 足够
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      # Unity 6 + ARCore 构建需要磁盘空间，清理 runner 缓存
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: false
+          haskell: false
+          large-packages: false
+          swap-storage: false
+
+      # 编译 (GameCI Unity Builder)
+      # 工具链(JDK/SDK/NDK)由 unityci/editor:*-android 镜像内置，AndroidBuild.cs 会自动探测
+      - name: Build Unity Project (Android)
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}   # .ulf 文件内容
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+        with:
+          projectPath: LuoTianyiAR
+          unityVersion: 6000.3.22f1
+          targetPlatform: Android
+          androidExportType: androidPackage    # 直接输出 APK
+          buildMethod: AndroidBuild.Build      # 复用本地批处理构建脚本
+          allowDirtyBuild: true
+
+      # 上传 APK 产物
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LuoTianyiAR-APK
+          path: LuoTianyiAR/Builds/LuoTianyiAR.apk
+          retention-days: 14
