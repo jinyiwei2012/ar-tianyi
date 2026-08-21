@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 58229d41c24a7fb4aafd097ab43bcc2a, type: 3}
+  m_Name: sad.exp3
+  m_EditorClassIdentifier: Live2D.Cubism::Live2D.Cubism.Framework.Expression.CubismExpressionData
+  Type: Live2D Expression
+  FadeInTime: 0.3
+  FadeOutTime: 0.3
+  Parameters:
+  - Id: Param67
+    Value: 0.831
+    Blend: 1
+  - Id: Param55
+    Value: 60
+    Blend: 1
+  - Id: Param87
+    Value: 21.69
+    Blend: 1
+  - Id: Param77
+    Value: 30
+    Blend: 1
+  - Id: ParamEyeLOpen
+    Value: -0.16
+    Blend: 1
+  - Id: ParamEyeROpen
+    Value: -0.16
+    Blend: 1
+  - Id: Param89
+    Value: -15.634
+    Blend: 1
