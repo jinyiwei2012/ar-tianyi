@@ -6,6 +6,9 @@ public class CylindricalBillboard : MonoBehaviour
 {
     private Transform cameraTransform;
 
+    /// 由 PlaceOnPlane 注入：走路时 billboard 让位，由 LuoMovement 控制朝向
+    [HideInInspector] public LuoMovement movement;
+
     private void Start()
     {
         var cam = Camera.main;
@@ -20,6 +23,9 @@ public class CylindricalBillboard : MonoBehaviour
             if (cam == null) return;
             cameraTransform = cam.transform;
         }
+
+        // 走路时让位：朝向由 LuoMovement 控制
+        if (movement != null && movement.IsWalking) return;
 
         // 世界竖直方向向量 (0,1,0)
         var toCamera = cameraTransform.position - transform.position;

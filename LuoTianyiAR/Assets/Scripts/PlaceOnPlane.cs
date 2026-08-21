@@ -48,12 +48,14 @@ public class PlaceOnPlane : MonoBehaviour
             {
                 spawnedModel = Instantiate(modelPrefab, hitPose.position, Quaternion.identity);
                 ScaleToHeight(spawnedModel, targetHeightMeters);
-                spawnedModel.AddComponent<CylindricalBillboard>();
+                var billboard = spawnedModel.AddComponent<CylindricalBillboard>();
+                var movement = spawnedModel.AddComponent<LuoMovement>();
+                // 关联: billboard 在走路时让位给朝向逻辑
+                billboard.movement = movement;
                 Debug.Log("[PlaceOnPlane] 洛天依已放置于 " + hitPose.position);
-            }
-            else
-            {
-                spawnedModel.transform.position = hitPose.position;
+
+                // 放置完成后把点击控制权交给 LuoMovement（走路），禁用自身避免冲突
+                enabled = false;
             }
             hits.Clear();
         }
