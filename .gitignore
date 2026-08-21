@@ -38,6 +38,10 @@ ProjectSettings/ProjectSettings.asset.bak
 sysinfo.txt
 crashlytics-build.properties
 
+# Android/CMake 构建临时产物
+.utmp/
+Assets/XR/Temp/
+
 # IDE
 .idea/
 .vs/
