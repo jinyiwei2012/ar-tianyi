@@ -7,11 +7,17 @@ using UnityEngine.InputSystem.XR;
 using UnityEngine.XR.ARFoundation;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using UnityEngine.XR.ARSubsystems;
 
 public static class ARSceneSetup
 {
+    private const string ScenePath = "Assets/Scenes/ARScene.unity";
+    private const string ModelPrefabPath = "Assets/Live2D/Models/LuoTianyi/model.prefab";
+
     public static void CreateARScene()
     {
+        AndroidBuild.ConfigureRenderPipeline();
+
         // 新建场景
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -34,6 +40,8 @@ public static class ARSceneSetup
             typeof(ARCameraBackground),
             typeof(TrackedPoseDriver));
         cameraGo.transform.SetParent(offsetGo.transform);
+        cameraGo.transform.localPosition = Vector3.zero;
+        cameraGo.transform.localRotation = Quaternion.identity;
 
         var camera = cameraGo.GetComponent<Camera>();
         camera.tag = "MainCamera";
@@ -56,38 +64,52 @@ public static class ARSceneSetup
         origin.CameraFloorOffsetObject = offsetGo;
         origin.Camera = camera;
 
-        // 3. 管理器挂到 XR Origin (ARF 6.x 规范)
-        originGo.AddComponent<ARPlaneManager>();
+        // 3. Trackable 管理器挂到 XR Origin (ARF 6.x 规范)
+        var planeManager = originGo.AddComponent<ARPlaneManager>();
+        planeManager.requestedDetectionMode = PlaneDetectionMode.Horizontal;
         originGo.AddComponent<ARRaycastManager>();
+        originGo.AddComponent<ARAnchorManager>();
 
-        // 4. 遮挡 (Phase 3): AROcclusionManager + 运行时降级控制
-        originGo.AddComponent<AROcclusionManager>();
-        originGo.AddComponent<OcclusionController>();
+        // 4. P0 交互：点击/拖动真实平面，Anchor 保持世界位姿，双指按米缩放。
+        var modelPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(ModelPrefabPath);
+        if (modelPrefab == null)
+            throw new System.InvalidOperationException($"[ARSceneSetup] 找不到模型 Prefab: {ModelPrefabPath}");
 
-        // 5. 保存场景
+        var placement = originGo.AddComponent<PlaceOnPlane>();
+        var placementObject = new SerializedObject(placement);
+        placementObject.FindProperty("modelPrefab").objectReferenceValue = modelPrefab;
+        placementObject.ApplyModifiedPropertiesWithoutUndo();
+        originGo.AddComponent<PlacementGuideUI>();
+
+        // 5. 遮挡必须和 ARCameraManager/Camera 在同一对象；否则 RequireComponent 会在
+        // XR Origin 上生成一台多余 Camera，既浪费渲染又可能破坏相机选择。
+        cameraGo.AddComponent<AROcclusionManager>();
+        cameraGo.AddComponent<OcclusionController>();
+
+        // 6. 保存场景
         if (!AssetDatabase.IsValidFolder("Assets/Scenes"))
             AssetDatabase.CreateFolder("Assets", "Scenes");
-        EditorSceneManager.SaveScene(scene, "Assets/Scenes/ARScene.unity");
-        Debug.Log("[ARSceneSetup] ARScene created: XR Origin + AR Session + PlaneManager + RaycastManager + Occlusion");
+        EditorSceneManager.SaveScene(scene, ScenePath);
+        Debug.Log("[ARSceneSetup] ARScene created: horizontal planes + anchors + P0 placement UI + camera occlusion");
     }
 
     /// 给已存在的 ARScene 补挂遮挡组件（不重建场景）
     public static void AddOcclusion()
     {
-        var scene = EditorSceneManager.OpenScene("Assets/Scenes/ARScene.unity");
-        var originGo = GameObject.Find("XR Origin");
-        if (originGo == null)
+        var scene = EditorSceneManager.OpenScene(ScenePath);
+        var cameraGo = GameObject.Find("Main Camera");
+        if (cameraGo == null)
         {
-            Debug.LogError("[ARSceneSetup] 未找到 XR Origin");
+            Debug.LogError("[ARSceneSetup] 未找到 Main Camera");
             return;
         }
 
-        if (originGo.GetComponent<AROcclusionManager>() == null)
-            originGo.AddComponent<AROcclusionManager>();
-        if (originGo.GetComponent<OcclusionController>() == null)
-            originGo.AddComponent<OcclusionController>();
+        if (cameraGo.GetComponent<AROcclusionManager>() == null)
+            cameraGo.AddComponent<AROcclusionManager>();
+        if (cameraGo.GetComponent<OcclusionController>() == null)
+            cameraGo.AddComponent<OcclusionController>();
 
         EditorSceneManager.SaveScene(scene);
-        Debug.Log("[ARSceneSetup] AROcclusionManager + OcclusionController 已挂到 XR Origin");
+        Debug.Log("[ARSceneSetup] AROcclusionManager + OcclusionController 已挂到 Main Camera");
     }
 }

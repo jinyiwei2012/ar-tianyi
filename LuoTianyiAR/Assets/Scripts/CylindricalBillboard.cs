@@ -1,39 +1,90 @@
-// CylindricalBillboard.cs — PRD 第 2 节: 只绕世界竖直轴转向相机
-// 不修改 pitch/roll，保持人物竖直（避免 2D 角色纸片化）。
+// CylindricalBillboard.cs — PRD 第 2 节: 只绕世界竖直轴转向相机。
+// Cubism 模型的可见正面朝本地 -Z（SDK 示例相机位于模型的 -Z 侧），
+// 因此必须让 transform.back 而不是 transform.forward 指向相机。
 using UnityEngine;
 
 public class CylindricalBillboard : MonoBehaviour
 {
     private Transform cameraTransform;
 
-    /// 由 PlaceOnPlane 注入：走路时 billboard 让位，由 LuoMovement 控制朝向
-    [HideInInspector] public LuoMovement movement;
-
     private void Start()
     {
-        var cam = Camera.main;
-        if (cam != null) cameraTransform = cam.transform;
+        ResolveCamera();
+        FaceCameraNow();
     }
 
     private void LateUpdate()
     {
+        FaceCameraNow();
+    }
+
+    /// <summary>
+    /// PlaceOnPlane 在实例化后注入实际 AR 相机，避免依赖 Camera.main 的查找时机。
+    /// </summary>
+    public void SetCamera(Camera camera)
+    {
+        cameraTransform = camera != null ? camera.transform : null;
+        FaceCameraNow();
+    }
+
+    /// <summary>
+    /// 立即校正朝向。重新挂到另一个 Anchor 后也应调用，避免一帧显示背面。
+    /// </summary>
+    public bool FaceCameraNow()
+    {
         if (cameraTransform == null)
+            ResolveCamera();
+        if (cameraTransform == null)
+            return false;
+
+        if (!TryGetFacingRotation(transform.position, cameraTransform.position, out var rotation))
+            return false;
+
+        transform.rotation = rotation;
+        return true;
+    }
+
+    /// <summary>
+    /// 计算仅含 yaw 的稳定朝向。返回的 rotation 保证本地 -Z 指向相机、Y 保持世界竖直。
+    /// </summary>
+    public static bool TryGetFacingRotation(
+        Vector3 modelPosition,
+        Vector3 cameraPosition,
+        out Quaternion rotation)
+    {
+        // LookRotation 令本地 +Z 指向 forward；Cubism 正面是本地 -Z，
+        // 所以 forward 应从相机指向模型，而不是从模型指向相机。
+        var cameraToModel = modelPosition - cameraPosition;
+        cameraToModel.y = 0f;
+        if (cameraToModel.sqrMagnitude < 0.0001f)
         {
-            var cam = Camera.main;
-            if (cam == null) return;
-            cameraTransform = cam.transform;
+            rotation = Quaternion.identity;
+            return false;
         }
 
-        // 走路时让位：朝向由 LuoMovement 控制
-        if (movement != null && movement.IsWalking) return;
+        rotation = Quaternion.LookRotation(cameraToModel, Vector3.up);
+        return true;
+    }
 
-        // 世界竖直方向向量 (0,1,0)
-        var toCamera = cameraTransform.position - transform.position;
-        toCamera.y = 0f; // 投影到水平面
+    public float FrontFacingDot
+    {
+        get
+        {
+            if (cameraTransform == null)
+                return float.NaN;
 
-        if (toCamera.sqrMagnitude < 0.0001f) return; // 相机与角色重合时跳过
+            var toCamera = cameraTransform.position - transform.position;
+            toCamera.y = 0f;
+            if (toCamera.sqrMagnitude < 0.0001f)
+                return float.NaN;
 
-        // 只设置 Y 轴旋转: 面向相机水平方向
-        transform.rotation = Quaternion.LookRotation(toCamera, Vector3.up);
+            return Vector3.Dot(-transform.forward, toCamera.normalized);
+        }
+    }
+
+    private void ResolveCamera()
+    {
+        var camera = Camera.main;
+        cameraTransform = camera != null ? camera.transform : null;
     }
 }

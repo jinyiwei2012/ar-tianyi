@@ -1,73 +1,389 @@
-// PlaceOnPlane.cs — PRD Phase 1: 点击真实平面放置洛天依
-// 挂载到 XR Origin 上。首次点击放置模型，之后点击重新定位。
+// PlaceOnPlane.cs — PRD P0: 在真实水平面上放置/拖动洛天依，并以世界米为单位缩放。
+using System.Collections;
 using System.Collections.Generic;
+using Live2D.Cubism.Rendering;
 using UnityEngine;
 using UnityEngine.InputSystem.EnhancedTouch;
 using Touch = UnityEngine.InputSystem.EnhancedTouch.Touch;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
 
-[RequireComponent(typeof(ARRaycastManager))]
+[RequireComponent(typeof(ARRaycastManager), typeof(ARPlaneManager), typeof(ARAnchorManager))]
 public class PlaceOnPlane : MonoBehaviour
 {
     [Header("模型")]
     [SerializeField] private GameObject modelPrefab;
-    [Tooltip("洛天依在 AR 世界中的身高（米）。Cubism 模型默认 1:1，需按此缩放")] 
-    [SerializeField] private float targetHeightMeters = 0.6f;
+    [Tooltip("首次放置时，洛天依在 AR 世界中的身高（米）")]
+    [SerializeField, Min(0.05f)] private float targetHeightMeters = 0.6f;
+    [SerializeField, Min(0.05f)] private float minimumHeightMeters = 0.2f;
+    [SerializeField, Min(0.05f)] private float maximumHeightMeters = 1.5f;
+    [Tooltip("Cubism 网格在生成后的第一帧才可用；超过此帧数视为加载失败。")]
+    [SerializeField, Min(1)] private int modelInitializationFrameLimit = 120;
 
     private ARRaycastManager raycastManager;
+    private ARPlaneManager planeManager;
+    private ARAnchorManager anchorManager;
+    private PlacementGuideUI guideUI;
     private readonly List<ARRaycastHit> hits = new();
+
+    private ARAnchor currentAnchor;
     private GameObject spawnedModel;
+    private Vector3 scalePerMeter;
+    private Coroutine modelInitialization;
+    private bool modelReady;
+    private string modelLoadFailure;
+    private int placementFingerIndex = -1;
+    private float pinchStartDistance;
+    private float pinchStartHeight;
+
+    private void Awake()
+    {
+        raycastManager = GetComponent<ARRaycastManager>();
+        planeManager = GetComponent<ARPlaneManager>();
+        anchorManager = GetComponent<ARAnchorManager>();
+        guideUI = GetComponent<PlacementGuideUI>();
+    }
 
     private void OnEnable()
     {
         EnhancedTouchSupport.Enable();
         Touch.onFingerDown += OnFingerDown;
+        Touch.onFingerMove += OnFingerMove;
+        Touch.onFingerUp += OnFingerUp;
     }
 
     private void OnDisable()
     {
         Touch.onFingerDown -= OnFingerDown;
+        Touch.onFingerMove -= OnFingerMove;
+        Touch.onFingerUp -= OnFingerUp;
         EnhancedTouchSupport.Disable();
     }
 
     private void Start()
     {
-        raycastManager = GetComponent<ARRaycastManager>();
         if (modelPrefab == null)
-            Debug.LogError("[PlaceOnPlane] 未指定 modelPrefab！请在 Inspector 拖入 model.prefab");
+            Debug.LogError("[PlaceOnPlane] 未指定 modelPrefab；请运行 ARSceneSetup.ConfigureARScene。");
+    }
+
+    private void Update()
+    {
+        UpdatePinchScale();
     }
 
     private void OnFingerDown(Finger finger)
     {
-        // 屏上点击 → 射线检测真实平面
-        if (raycastManager.Raycast(finger.screenPosition, hits, TrackableType.PlaneWithinPolygon))
-        {
-            var hitPose = hits[0].pose;
-            if (spawnedModel == null)
-            {
-                spawnedModel = Instantiate(modelPrefab, hitPose.position, Quaternion.identity);
-                ScaleToHeight(spawnedModel, targetHeightMeters);
-                var billboard = spawnedModel.AddComponent<CylindricalBillboard>();
-                var movement = spawnedModel.AddComponent<LuoMovement>();
-                // 关联: billboard 在走路时让位给朝向逻辑
-                billboard.movement = movement;
-                Debug.Log("[PlaceOnPlane] 洛天依已放置于 " + hitPose.position);
+        if (RuntimeDebugPanel.IsPointerOverDebugUI(finger.screenPosition))
+            return;
 
-                // 放置完成后把点击控制权交给 LuoMovement（走路），禁用自身避免冲突
-                enabled = false;
-            }
+        if (Touch.activeTouches.Count > 1)
+            return;
+
+        placementFingerIndex = finger.index;
+        guideUI?.ShowTap(finger.screenPosition);
+        TryPlaceAtScreenPosition(finger.screenPosition, true);
+    }
+
+    private void OnFingerMove(Finger finger)
+    {
+        if (RuntimeDebugPanel.IsOpen)
+            return;
+
+        if (finger.index != placementFingerIndex || Touch.activeTouches.Count != 1)
+            return;
+
+        // 拖动过程持续更新位置，但只在按下时显示一次反馈，避免提示闪烁。
+        TryPlaceAtScreenPosition(finger.screenPosition, false);
+    }
+
+    private void OnFingerUp(Finger finger)
+    {
+        if (finger.index == placementFingerIndex)
+            placementFingerIndex = -1;
+    }
+
+    private void TryPlaceAtScreenPosition(Vector2 screenPosition, bool showFeedback)
+    {
+        if (modelPrefab == null)
+        {
+            ReportFailure(screenPosition, showFeedback, "模型资源未配置，请重新安装应用。");
+            return;
+        }
+
+        if (!raycastManager.Raycast(screenPosition, hits, TrackableType.PlaneWithinPolygon))
+        {
             hits.Clear();
+            ReportFailure(screenPosition, showFeedback, "这里还没有识别到水平平面，请继续扫描后再试。");
+            return;
+        }
+
+        var hit = hits[0];
+        hits.Clear();
+        var plane = planeManager.GetPlane(hit.trackableId);
+        if (plane == null || plane.alignment == PlaneAlignment.Vertical)
+        {
+            ReportFailure(screenPosition, showFeedback, "该位置不是可用的水平平面。");
+            return;
+        }
+
+        // Anchor 必须先创建成功，再移除旧 Anchor，避免追踪短暂失败时模型消失。
+        var newAnchor = anchorManager.AttachAnchor(plane, hit.pose);
+        if (newAnchor == null)
+        {
+            Debug.LogWarning("[PlaceOnPlane] 当前平面无法创建 Anchor，本次放置已忽略。");
+            ReportFailure(screenPosition, showFeedback, "无法在该位置建立空间锚点，请换一个位置重试。");
+            return;
+        }
+
+        bool wasAlreadyPlaced = spawnedModel != null;
+        var previousAnchor = currentAnchor;
+        currentAnchor = newAnchor;
+
+        if (spawnedModel == null)
+        {
+            spawnedModel = Instantiate(modelPrefab, currentAnchor.transform);
+            spawnedModel.name = "LuoTianyi (AR)";
+            spawnedModel.transform.localPosition = Vector3.zero;
+            var billboard = spawnedModel.AddComponent<CylindricalBillboard>();
+            billboard.SetCamera(Camera.main);
+            SetModelRenderersEnabled(false);
+            modelReady = false;
+            modelLoadFailure = null;
+            modelInitialization = StartCoroutine(InitializeModel(screenPosition, plane.trackableId));
+            Debug.Log($"[PlaceOnPlane] 锚点已建立，正在等待 Cubism 网格初始化: {plane.trackableId}");
+        }
+        else
+        {
+            spawnedModel.transform.SetParent(currentAnchor.transform, false);
+            spawnedModel.GetComponent<CylindricalBillboard>()?.FaceCameraNow();
+            if (modelReady)
+                PlaceFeetOnAnchor();
+        }
+
+        if (previousAnchor != null)
+            anchorManager.TryRemoveAnchor(previousAnchor);
+
+        if (showFeedback)
+        {
+            guideUI?.ReportPlacement(
+                screenPosition,
+                true,
+                wasAlreadyPlaced ? "位置已更新。" : "锚点已建立，正在加载洛天依…");
         }
     }
 
-    /// 按目标身高缩放模型（Cubism 模型原始高度通常为编辑器画布像素数）
-    private void ScaleToHeight(GameObject model, float heightMeters)
+    private IEnumerator InitializeModel(Vector2 feedbackPosition, TrackableId planeId)
     {
-        var renderer = model.GetComponentInChildren<Renderer>();
-        if (renderer == null) return;
-        float originalHeight = renderer.bounds.size.y;
-        if (originalHeight > 0.001f)
-            model.transform.localScale = Vector3.one * (heightMeters / originalHeight);
+        // CubismRenderer 会在初始化时创建自己的运行时 Mesh。SDK 5 的 MeshFilter
+        // 仅在 UNITY_EDITOR 下用于 Scene View picking，真机上 sharedMesh 按设计始终为空。
+        for (int frame = 0; frame < modelInitializationFrameLimit; frame++)
+        {
+            yield return null;
+            if (spawnedModel == null)
+                yield break;
+
+            if (!TryGetModelBounds(out var bounds))
+                continue;
+
+            float originalHeight = bounds.size.y;
+            if (!float.IsFinite(originalHeight) || originalHeight <= 0.001f)
+                continue;
+
+            spawnedModel.transform.localScale *= targetHeightMeters / originalHeight;
+            scalePerMeter = spawnedModel.transform.localScale / targetHeightMeters;
+            modelReady = true;
+            modelLoadFailure = null;
+            SetModelRenderersEnabled(true);
+            PlaceFeetOnAnchor();
+            modelInitialization = null;
+
+            Debug.Log(
+                $"[PlaceOnPlane] Cubism 模型已就绪，平面 {planeId}，" +
+                $"原始高度 {originalHeight:F3}，AR 身高 {targetHeightMeters:F2}m");
+            guideUI?.ReportPlacement(
+                feedbackPosition,
+                true,
+                "洛天依已加载：可以拖动位置或双指调整大小。");
+            yield break;
+        }
+
+        modelInitialization = null;
+        modelReady = false;
+        modelLoadFailure = "模型网格初始化超时，请重启应用后重试。";
+        SetModelRenderersEnabled(false);
+        Debug.LogError(
+            $"[PlaceOnPlane] Cubism 模型初始化超时（{modelInitializationFrameLimit} 帧）；" +
+            $"Renderer={spawnedModel.GetComponentsInChildren<Renderer>(true).Length}, " +
+            $"CubismRenderer={spawnedModel.GetComponentsInChildren<CubismRenderer>(true).Length}, " +
+            $"RuntimeMesh={CountRuntimeMeshes()}");
+        guideUI?.ReportPlacement(feedbackPosition, false, modelLoadFailure);
+        RuntimeDebugPanel.Open("Cubism 模型网格初始化超时");
+    }
+
+    private void ReportFailure(Vector2 screenPosition, bool showFeedback, string message)
+    {
+        if (showFeedback)
+            guideUI?.ReportPlacement(screenPosition, false, message);
+    }
+
+    private void UpdatePinchScale()
+    {
+        if (RuntimeDebugPanel.IsOpen || spawnedModel == null || !modelReady || Touch.activeTouches.Count < 2)
+        {
+            pinchStartDistance = 0f;
+            return;
+        }
+
+        var first = Touch.activeTouches[0].screenPosition;
+        var second = Touch.activeTouches[1].screenPosition;
+        float distance = Vector2.Distance(first, second);
+        if (pinchStartDistance <= 0f)
+        {
+            pinchStartDistance = Mathf.Max(distance, 1f);
+            pinchStartHeight = targetHeightMeters;
+            placementFingerIndex = -1;
+            return;
+        }
+
+        targetHeightMeters = Mathf.Clamp(
+            pinchStartHeight * distance / pinchStartDistance,
+            minimumHeightMeters,
+            maximumHeightMeters);
+        spawnedModel.transform.localScale = scalePerMeter * targetHeightMeters;
+        PlaceFeetOnAnchor();
+    }
+
+    private void PlaceFeetOnAnchor()
+    {
+        if (spawnedModel == null || currentAnchor == null)
+            return;
+
+        spawnedModel.transform.localPosition = Vector3.zero;
+        if (TryGetModelBounds(out var bounds))
+        {
+            float lift = currentAnchor.transform.position.y - bounds.min.y;
+            spawnedModel.transform.position += Vector3.up * lift;
+        }
+    }
+
+    private bool TryGetModelBounds(out Bounds bounds)
+    {
+        var renderers = spawnedModel != null
+            ? spawnedModel.GetComponentsInChildren<CubismRenderer>(true)
+            : System.Array.Empty<CubismRenderer>();
+
+        bool hasBounds = false;
+        bounds = default;
+        foreach (var renderer in renderers)
+        {
+            var mesh = renderer.Mesh;
+            if (mesh == null || mesh.vertexCount == 0)
+                continue;
+
+            var rendererBounds = TransformBounds(mesh.bounds, renderer.transform.localToWorldMatrix);
+            if (!hasBounds)
+            {
+                bounds = rendererBounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(rendererBounds);
+            }
+        }
+
+        return hasBounds && float.IsFinite(bounds.size.y) && bounds.size.y > 0.001f;
+    }
+
+    private static Bounds TransformBounds(Bounds localBounds, Matrix4x4 localToWorld)
+    {
+        Vector3 center = localToWorld.MultiplyPoint3x4(localBounds.center);
+        Vector3 extents = localBounds.extents;
+        Vector3 axisX = localToWorld.MultiplyVector(new Vector3(extents.x, 0f, 0f));
+        Vector3 axisY = localToWorld.MultiplyVector(new Vector3(0f, extents.y, 0f));
+        Vector3 axisZ = localToWorld.MultiplyVector(new Vector3(0f, 0f, extents.z));
+        var worldExtents = new Vector3(
+            Mathf.Abs(axisX.x) + Mathf.Abs(axisY.x) + Mathf.Abs(axisZ.x),
+            Mathf.Abs(axisX.y) + Mathf.Abs(axisY.y) + Mathf.Abs(axisZ.y),
+            Mathf.Abs(axisX.z) + Mathf.Abs(axisY.z) + Mathf.Abs(axisZ.z));
+        return new Bounds(center, worldExtents * 2f);
+    }
+
+    private void SetModelRenderersEnabled(bool enabled)
+    {
+        if (spawnedModel == null)
+            return;
+
+        foreach (var renderer in spawnedModel.GetComponentsInChildren<Renderer>(true))
+            renderer.enabled = enabled;
+    }
+
+    private int CountRuntimeMeshes()
+    {
+        if (spawnedModel == null)
+            return 0;
+
+        int count = 0;
+        foreach (var renderer in spawnedModel.GetComponentsInChildren<CubismRenderer>(true))
+        {
+            if (renderer.Mesh != null && renderer.Mesh.vertexCount > 0)
+                count++;
+        }
+        return count;
+    }
+
+    public bool HasPlacedModel => spawnedModel != null;
+    public bool IsModelReady => modelReady;
+    public bool IsModelLoading => spawnedModel != null && !modelReady && string.IsNullOrEmpty(modelLoadFailure);
+    public string ModelLoadFailure => modelLoadFailure;
+
+    public string GetDebugSnapshot()
+    {
+        if (spawnedModel == null)
+            return $"state=not_placed, prefab={(modelPrefab != null ? modelPrefab.name : "missing")}, targetHeight={targetHeightMeters:F3}m";
+
+        var renderers = spawnedModel.GetComponentsInChildren<Renderer>(true);
+        var cubismRenderers = spawnedModel.GetComponentsInChildren<CubismRenderer>(true);
+        int enabledRenderers = 0;
+        int validMeshes = 0;
+        string shaderName = "missing";
+        bool shaderSupported = false;
+
+        foreach (var renderer in renderers)
+        {
+            if (renderer.enabled)
+                enabledRenderers++;
+            if (shaderName == "missing" && renderer.sharedMaterial != null && renderer.sharedMaterial.shader != null)
+            {
+                shaderName = renderer.sharedMaterial.shader.name;
+                shaderSupported = renderer.sharedMaterial.shader.isSupported;
+            }
+        }
+
+        foreach (var cubismRenderer in cubismRenderers)
+        {
+            if (cubismRenderer.Mesh != null && cubismRenderer.Mesh.vertexCount > 0)
+                validMeshes++;
+        }
+
+        bool hasBounds = TryGetModelBounds(out var bounds);
+        string boundsText = hasBounds
+            ? $"center={bounds.center:F3}, size={bounds.size:F3}"
+            : "invalid";
+        string anchorState = currentAnchor != null ? currentAnchor.trackingState.ToString() : "missing";
+        string state = modelReady ? "ready" : IsModelLoading ? "loading" : "failed";
+        var billboard = spawnedModel.GetComponent<CylindricalBillboard>();
+        string facingText = billboard != null && float.IsFinite(billboard.FrontFacingDot)
+            ? $"frontDot={billboard.FrontFacingDot:F4}"
+            : "frontDot=unknown";
+
+        return
+            $"state={state}, failure={(!string.IsNullOrEmpty(modelLoadFailure) ? modelLoadFailure : "none")}\n" +
+            $"anchor={anchorState}, targetHeight={targetHeightMeters:F3}m\n" +
+            $"renderers={renderers.Length}, enabled={enabledRenderers}, cubismRenderers={cubismRenderers.Length}, runtimeMeshes={validMeshes}\n" +
+            $"bounds={boundsText}\n" +
+            $"localPosition={spawnedModel.transform.localPosition:F3}, localScale={spawnedModel.transform.localScale:F5}\n" +
+            $"billboard={(billboard != null ? "active" : "missing")}, {facingText}\n" +
+            $"shader={shaderName}, supported={shaderSupported}";
     }
 }
