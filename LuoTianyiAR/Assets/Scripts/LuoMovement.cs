@@ -113,6 +113,7 @@ public class LuoMovement : MonoBehaviour
     }
 
     /// 向下 raycast：保持脚底贴合真实平面（PRD Phase 2: downward raycast）。
+    /// 若脚底已不在可通行平面多边形内（走出边缘），立即停止，避免悬空或穿入其它平面。
     private void KeepOnGround()
     {
         if (raycastManager == null)
@@ -124,6 +125,12 @@ public class LuoMovement : MonoBehaviour
             var p = transform.position;
             p.y = hits[0].pose.position.y;
             transform.position = p;
+        }
+        else
+        {
+            hits.Clear();
+            Stop();
+            return;
         }
         hits.Clear();
     }
