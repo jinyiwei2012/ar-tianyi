@@ -26,6 +26,10 @@ public class PlaceOnPlane : MonoBehaviour
     [Tooltip("已放置后，手指移动超过该像素距离才进入拖动，避免普通点击/微移重建 Anchor。")]
     [SerializeField, Min(1f)] private float dragThresholdPixels = 32f;
 
+    [Header("诊断")]
+    [Tooltip("Phase 3 遮挡验证：在模型旁生成一个普通 URP 立方体作遮挡参照。若真实物体能遮住立方体但不能遮住模型，说明 Cubism 渲染路径未参与 depth test，需要 RenderTexture fallback。")]
+    [SerializeField] private bool enableOcclusionTestCube = false;
+
     private ARRaycastManager raycastManager;
     private ARPlaneManager planeManager;
     private ARAnchorManager anchorManager;
@@ -263,6 +267,10 @@ public class PlaceOnPlane : MonoBehaviour
             luoMovement = placementRoot.AddComponent<LuoMovement>();
             luoMovement.Initialize(raycastManager, billboard, motionAnimation);
 
+            // Phase 3：遮挡参照立方体（普通 URP 几何），随 Placement Root 一起对齐地面。
+            if (enableOcclusionTestCube)
+                SpawnOcclusionTestCube();
+
             SetModelRenderersEnabled(false);
             modelReady = false;
             modelLoadFailure = null;
@@ -401,6 +409,20 @@ public class PlaceOnPlane : MonoBehaviour
         if (stick.TryGetComponent<Collider>(out var stickCollider))
             stickCollider.enabled = false;
         diagnosticMarkers.Add(stick);
+    }
+
+    private void SpawnOcclusionTestCube()
+    {
+        // 普通 URP 立方体：高 10cm、边长 10cm，放在模型右侧 0.3m 处的地面上。
+        // 用途：真机验证真实物体能否遮住普通几何，从而对比 Cubism 是否参与环境深度测试。
+        var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        cube.name = "Occlusion Test Cube";
+        cube.transform.SetParent(placementRoot.transform, false);
+        cube.transform.localPosition = new Vector3(0.3f, 0.05f, 0f);
+        cube.transform.localScale = new Vector3(0.1f, 0.1f, 0.1f);
+        if (cube.TryGetComponent<Collider>(out var cubeCollider))
+            cubeCollider.enabled = false;
+        Debug.Log("[PlaceOnPlane] 遮挡参照立方体已生成（普通 URP 几何，右侧 0.3m）。");
     }
 
     private void PlaceFeetOnAnchor()
