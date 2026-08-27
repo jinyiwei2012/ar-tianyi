@@ -17,6 +17,7 @@ public class LuoMovement : MonoBehaviour
 
     private ARRaycastManager raycastManager;
     private CylindricalBillboard billboard;
+    private LuoMotionAnimation motionAnimation;
     private readonly List<ARRaycastHit> hits = new();
     private Vector3? targetPosition;   // null = Idle
     private bool isWalking;
@@ -24,10 +25,11 @@ public class LuoMovement : MonoBehaviour
     public bool IsWalking => isWalking;
 
     /// <summary>由 PlaceOnPlane 注入依赖（raycast 用于贴地探测，billboard 用于行走时暂停朝向）。</summary>
-    public void Initialize(ARRaycastManager raycast, CylindricalBillboard facing)
+    public void Initialize(ARRaycastManager raycast, CylindricalBillboard facing, LuoMotionAnimation animation = null)
     {
         raycastManager = raycast;
         billboard = facing;
+        motionAnimation = animation;
     }
 
     /// <summary>走到指定世界坐标（PRD: walk(x,z)）。移动中再次调用会更新目标点。</summary>
@@ -36,6 +38,8 @@ public class LuoMovement : MonoBehaviour
         targetPosition = worldPosition;
         if (billboard != null)
             billboard.SetPaused(true);
+        if (motionAnimation != null)
+            motionAnimation.SetWalking(true);
     }
 
     /// <summary>回到锚点（PRD: returnToAnchor）。</summary>
@@ -57,6 +61,8 @@ public class LuoMovement : MonoBehaviour
         isWalking = false;
         if (billboard != null)
             billboard.SetPaused(false);
+        if (motionAnimation != null)
+            motionAnimation.SetWalking(false);
     }
 
     private void Update()
@@ -93,6 +99,8 @@ public class LuoMovement : MonoBehaviour
             isWalking = false;
             if (billboard != null)
                 billboard.SetPaused(false);
+            if (motionAnimation != null)
+                motionAnimation.SetWalking(false);
             KeepOnGround();
         }
     }

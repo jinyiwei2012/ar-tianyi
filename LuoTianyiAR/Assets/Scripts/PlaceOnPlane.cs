@@ -258,9 +258,10 @@ public class PlaceOnPlane : MonoBehaviour
             var billboard = spawnedModel.AddComponent<CylindricalBillboard>();
             billboard.SetCamera(Camera.main);
 
-            // Phase 2：移动组件挂到稳定根节点，注入 raycast（贴地）与 billboard（行走时暂停朝向）。
+            // Phase 2：动画组件挂到模型，驱动呼吸/眨眼/走路律动；移动组件挂到稳定根节点，注入依赖。
+            var motionAnimation = spawnedModel.AddComponent<LuoMotionAnimation>();
             luoMovement = placementRoot.AddComponent<LuoMovement>();
-            luoMovement.Initialize(raycastManager, billboard);
+            luoMovement.Initialize(raycastManager, billboard, motionAnimation);
 
             SetModelRenderersEnabled(false);
             modelReady = false;
