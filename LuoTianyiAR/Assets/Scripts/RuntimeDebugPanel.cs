@@ -210,6 +210,8 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
             logLines.Clear();
             AddInternalLog("INFO", "日志已由用户清空");
         }
+        if (GUILayout.Button("参数探测", buttonStyle, GUILayout.Width(150f * scale), GUILayout.Height(58f * scale)))
+            ParameterDebugWindow.Toggle();
         GUILayout.EndHorizontal();
 
         if (Time.unscaledTime < copyStatusUntil && !string.IsNullOrEmpty(copyStatus))

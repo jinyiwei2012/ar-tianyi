@@ -90,9 +90,13 @@ public class PlacementGuideUI : MonoBehaviour
         DrawCenterReticle(canPlaceAtCenter ? ReadyColor : WaitingColor);
         DrawTouchFeedback();
 
-        string hint = placement != null && placement.IsModelReady
-            ? "单指拖动到已识别平面  ·  双指捏合调整大小"
-            : "将中心准星对准已识别平面，准星变绿后点击屏幕确认";
+        string hint;
+        if (placement != null && placement.IsWalking)
+            hint = "正在前往指定位置… 拖动可随时接管";
+        else if (placement != null && placement.IsModelReady)
+            hint = "单指拖动到已识别平面  ·  双指捏合调整大小";
+        else
+            hint = "将中心准星对准已识别平面，准星变绿后点击屏幕确认";
         if (Time.unscaledTime < transientUntil && !string.IsNullOrEmpty(transientMessage))
             hint = transientMessage;
 
@@ -158,6 +162,12 @@ public class PlacementGuideUI : MonoBehaviour
             title = "模型加载失败";
             detail = placement.ModelLoadFailure;
             color = FailureColor;
+        }
+        else if (placement.IsWalking)
+        {
+            title = "洛天依正在行走";
+            detail = "正在前往指定位置，拖动或点击可随时接管。";
+            color = WaitingColor;
         }
         else
         {

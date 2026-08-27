@@ -6,6 +6,7 @@ using UnityEngine;
 public class CylindricalBillboard : MonoBehaviour
 {
     private Transform cameraTransform;
+    private bool isPaused;
 
     private void Start()
     {
@@ -15,7 +16,18 @@ public class CylindricalBillboard : MonoBehaviour
 
     private void LateUpdate()
     {
-        FaceCameraNow();
+        if (!isPaused)
+            FaceCameraNow();
+    }
+
+    /// <summary>
+    /// 暂停/恢复面向相机（供 LuoMovement 在行走时接管朝向，停止后恢复面向相机）。
+    /// </summary>
+    public void SetPaused(bool paused)
+    {
+        isPaused = paused;
+        if (!paused)
+            FaceCameraNow();
     }
 
     /// <summary>

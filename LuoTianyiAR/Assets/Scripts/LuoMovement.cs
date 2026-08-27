@@ -1,10 +1,9 @@
 // LuoMovement.cs — PRD Phase 2: 洛天依在世界坐标中走动
-// 点击平面目标点 → 模型平滑走向目标，每帧向下 raycast 贴地，移动时转向运动方向。
-// 挂载到模型根节点上；由 PlaceOnPlane 在放置时 AddComponent。
+// 状态机：Idle <-> Walking。由 PlaceOnPlane 在模型放置时挂载到 Placement Root 并注入依赖；
+// 外部通过 WalkTo/ReturnToAnchor/LookAtUser/Stop 控制，不自行监听触摸（交互归 PlaceOnPlane）。
+// 移动时暂停 CylindricalBillboard（面向运动方向），到达/停止后恢复面向相机；每帧向下 raycast 贴地。
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.InputSystem.EnhancedTouch;
-using Touch = UnityEngine.InputSystem.EnhancedTouch.Touch;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
 
@@ -15,85 +14,124 @@ public class LuoMovement : MonoBehaviour
     [SerializeField] private float turnSpeed = 360f;      // 度/秒
     [Tooltip("向下 raycast 贴地的偏移量（从脚底向下探测）")]
     [SerializeField] private float groundProbeOffset = 0.05f;
+    [Tooltip("接近目标多少米内开始减速")]
+    [SerializeField] private float slowDownDistance = 0.5f;
+    [Tooltip("减速时的最低移动速度（米/秒）")]
+    [SerializeField, Min(0.02f)] private float minimumMoveSpeed = 0.08f;
 
     private ARRaycastManager raycastManager;
+    private CylindricalBillboard billboard;
+    private LuoMotionAnimation motionAnimation;
     private readonly List<ARRaycastHit> hits = new();
-    private Vector3? targetPosition;   // null = 未移动
-    private Vector3 currentVelocity;
+    private Vector3? targetPosition;   // null = Idle
     private bool isWalking;
 
-    private void OnEnable()
+    public bool IsWalking => isWalking;
+
+    /// <summary>由 PlaceOnPlane 注入依赖（raycast 用于贴地探测，billboard 用于行走时暂停朝向）。</summary>
+    public void Initialize(ARRaycastManager raycast, CylindricalBillboard facing, LuoMotionAnimation animation = null)
     {
-        EnhancedTouchSupport.Enable();
-        Touch.onFingerDown += OnFingerDown;
+        raycastManager = raycast;
+        billboard = facing;
+        motionAnimation = animation;
     }
 
-    private void OnDisable()
+    /// <summary>走到指定世界坐标（PRD: walk(x,z)）。移动中再次调用会更新目标点。</summary>
+    public void WalkTo(Vector3 worldPosition)
     {
-        Touch.onFingerDown -= OnFingerDown;
-        EnhancedTouchSupport.Disable();
+        targetPosition = worldPosition;
+        if (billboard != null)
+            billboard.SetPaused(true);
+        if (motionAnimation != null)
+            motionAnimation.SetWalking(true);
     }
 
-    private void Start()
+    /// <summary>回到锚点（PRD: returnToAnchor）。</summary>
+    public void ReturnToAnchor(Vector3 anchorPosition)
     {
-        raycastManager = GetComponent<ARRaycastManager>();
-        if (raycastManager == null)
-            raycastManager = FindObjectOfType<ARRaycastManager>();
+        WalkTo(anchorPosition);
     }
 
-    private void OnFingerDown(Finger finger)
+    /// <summary>停止移动并恢复面向相机（PRD: lookAtUser）。</summary>
+    public void LookAtUser()
     {
-        if (raycastManager == null) return;
-        if (raycastManager.Raycast(finger.screenPosition, hits, TrackableType.PlaneWithinPolygon))
-        {
-            targetPosition = hits[0].pose.position;
-            hits.Clear();
-        }
+        Stop();
+    }
+
+    /// <summary>立即停止移动，恢复 billboard 面向相机。</summary>
+    public void Stop()
+    {
+        targetPosition = null;
+        isWalking = false;
+        if (billboard != null)
+            billboard.SetPaused(false);
+        if (motionAnimation != null)
+            motionAnimation.SetWalking(false);
     }
 
     private void Update()
     {
-        if (targetPosition == null) return;
+        if (targetPosition == null)
+        {
+            if (isWalking)
+                Stop();
+            return;
+        }
 
         var target = targetPosition.Value;
-        var pos = transform.position;
+        var position = transform.position;
 
-        // 水平方向朝目标移动
-        Vector3 toTarget = target - pos;
+        Vector3 toTarget = target - position;
         toTarget.y = 0f;
-        float dist = toTarget.magnitude;
+        float distance = toTarget.magnitude;
 
-        if (dist > 0.02f)
+        if (distance > 0.02f)
         {
             isWalking = true;
-            // 面向运动方向（只绕 Y 轴，绕开 CylindricalBillboard 的朝向逻辑）
             RotateToward(toTarget);
 
-            // 世界坐标移动
-            Vector3 move = toTarget.normalized * moveSpeed * Time.deltaTime;
-            if (move.magnitude > dist) move = toTarget;  // 避免过冲
+            // 接近目标减速（最后 0.5m 线性减速），并联动动画强度，形成"逐渐停下"的走路感。
+            float currentSpeed = moveSpeed;
+            if (distance < slowDownDistance)
+                currentSpeed = Mathf.Max(minimumMoveSpeed, moveSpeed * (distance / slowDownDistance));
+
+            Vector3 move = toTarget.normalized * currentSpeed * Time.deltaTime;
+            if (move.magnitude > distance)
+                move = toTarget;          // 避免过冲
             transform.position += move;
 
-            // 贴地: 从脚底向下 raycast 保持在地面上
+            if (motionAnimation != null)
+                motionAnimation.SetWalkingIntensity(currentSpeed / moveSpeed);
+
             KeepOnGround();
         }
         else
         {
+            // 到达目标：回 Idle，恢复面向相机，最后再贴地一次。
+            targetPosition = null;
             isWalking = false;
-            targetPosition = null;  // 到达
+            if (billboard != null)
+                billboard.SetPaused(false);
+            if (motionAnimation != null)
+                motionAnimation.SetWalking(false);
+            KeepOnGround();
         }
     }
 
-    private void RotateToward(Vector3 dir)
+    private void RotateToward(Vector3 direction)
     {
-        var targetRot = Quaternion.LookRotation(dir, Vector3.up);
-        transform.rotation = Quaternion.RotateTowards(transform.rotation, targetRot, turnSpeed * Time.deltaTime);
+        var targetRotation = Quaternion.LookRotation(direction, Vector3.up);
+        transform.rotation = Quaternion.RotateTowards(
+            transform.rotation, targetRotation, turnSpeed * Time.deltaTime);
     }
 
-    /// 向下 raycast：保持脚底贴合真实平面（PRD Phase 2: downward raycast）
+    /// 向下 raycast：保持脚底贴合真实平面（PRD Phase 2: downward raycast）。
+    /// 若脚底已不在可通行平面多边形内（走出边缘），立即停止，避免悬空或穿入其它平面。
     private void KeepOnGround()
     {
-        if (raycastManager == null) return;
+        if (raycastManager == null)
+            return;
+
         var probeOrigin = transform.position + Vector3.up * groundProbeOffset;
         if (raycastManager.Raycast(new Ray(probeOrigin, Vector3.down), hits, TrackableType.PlaneWithinPolygon))
         {
@@ -101,20 +139,12 @@ public class LuoMovement : MonoBehaviour
             p.y = hits[0].pose.position.y;
             transform.position = p;
         }
+        else
+        {
+            hits.Clear();
+            Stop();
+            return;
+        }
         hits.Clear();
-    }
-
-    public bool IsWalking => isWalking;
-
-    /// 供外部调用：移动到指定世界坐标（Agent 接口预留）
-    public void WalkTo(Vector3 worldPos)
-    {
-        targetPosition = worldPos;
-    }
-
-    /// 回到锚点（PRD: returnToAnchor）
-    public void ReturnToAnchor(Vector3 anchorPos)
-    {
-        targetPosition = anchorPos;
     }
 }
