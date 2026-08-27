@@ -31,6 +31,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     private ARPlaneManager planeManager;
     private ARCameraManager cameraManager;
     private AROcclusionManager occlusionManager;
+    private OcclusionController occlusionController;
     private ARSession arSession;
 
     public static bool IsOpen => instance != null && instance.isOpen;
@@ -85,6 +86,8 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
             cameraManager = FindFirstObjectByType<ARCameraManager>(FindObjectsInactive.Include);
         if (occlusionManager == null)
             occlusionManager = FindFirstObjectByType<AROcclusionManager>(FindObjectsInactive.Include);
+        if (occlusionController == null)
+            occlusionController = FindFirstObjectByType<OcclusionController>(FindObjectsInactive.Include);
         if (arSession == null)
             arSession = FindFirstObjectByType<ARSession>(FindObjectsInactive.Include);
     }
@@ -239,10 +242,14 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
             ? GraphicsSettings.currentRenderPipeline.name
             : "Built-in";
 
+        string occlusionState = occlusionController != null && occlusionController.IsOcclusionEnabled
+            ? "ON"
+            : "OFF";
+
         return
             $"AR: {ARSession.state} / {ARSession.notTrackingReason}    平面: {planeCount}\n" +
             $"模型: {modelState}    FPS: {smoothedFps:F0}    管线: {pipeline}\n" +
-            $"Render Features: {GetRendererFeatureSummary()}";
+            $"遮挡: {occlusionState}    Render Features: {GetRendererFeatureSummary()}";
     }
 
     private void CopyReport()
@@ -285,7 +292,10 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         report.AppendLine($"ARSession component: present={arSession != null}, enabled={arSession != null && arSession.enabled}");
         report.AppendLine($"Planes: count={(planeManager != null ? planeManager.trackables.count : 0)}, mode={(planeManager != null ? planeManager.currentDetectionMode.ToString() : "missing")}");
         report.AppendLine($"Camera: present={cameraManager != null}, enabled={cameraManager != null && cameraManager.enabled}, permission={cameraManager != null && cameraManager.permissionGranted}, facing={(cameraManager != null ? cameraManager.currentFacingDirection.ToString() : "missing")}, background={(cameraManager != null ? cameraManager.currentRenderingMode.ToString() : "missing")}");
-        report.AppendLine($"Occlusion: present={occlusionManager != null}, enabled={occlusionManager != null && occlusionManager.enabled}, requested={(occlusionManager != null ? occlusionManager.requestedEnvironmentDepthMode.ToString() : "missing")}, current={(occlusionManager != null ? occlusionManager.currentEnvironmentDepthMode.ToString() : "missing")}");
+        string occlusionLine = occlusionController != null
+            ? occlusionController.GetDiagnosticLine()
+            : "controller=missing";
+        report.AppendLine($"Occlusion: {occlusionLine}");
         report.AppendLine();
 
         report.AppendLine("--- 模型 ---");

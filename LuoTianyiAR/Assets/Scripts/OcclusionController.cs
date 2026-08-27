@@ -14,6 +14,32 @@ public class OcclusionController : MonoBehaviour
 
     private AROcclusionManager occlusionManager;
 
+    /// <summary>当前遮挡是否实际启用（组件启用且 depth 模式非 Disabled）。</summary>
+    public bool IsOcclusionEnabled
+    {
+        get
+        {
+            return !forceDisable && occlusionManager != null && occlusionManager.enabled
+                && occlusionManager.currentEnvironmentDepthMode != EnvironmentDepthMode.Disabled;
+        }
+    }
+
+    /// <summary>诊断行：manager 状态、请求/当前 depth 模式、设备支持情况。</summary>
+    public string GetDiagnosticLine()
+    {
+        if (occlusionManager == null)
+            return "Occlusion: manager=missing";
+
+        var descriptor = occlusionManager.descriptor;
+        string support = descriptor == null
+            ? "unknown"
+            : descriptor.environmentDepthImageSupported.ToString();
+        return $"Occlusion: enabled={occlusionManager.enabled}, " +
+               $"requested={occlusionManager.requestedEnvironmentDepthMode}, " +
+               $"current={occlusionManager.currentEnvironmentDepthMode}, " +
+               $"support={support}, forceDisable={forceDisable}";
+    }
+
     private void Start()
     {
         occlusionManager = GetComponent<AROcclusionManager>();
