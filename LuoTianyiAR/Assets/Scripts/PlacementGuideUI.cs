@@ -92,7 +92,7 @@ public class PlacementGuideUI : MonoBehaviour
 
         string hint = placement != null && placement.IsModelReady
             ? "单指拖动到已识别平面  ·  双指捏合调整大小"
-            : "缓慢移动手机扫描地面或桌面，然后点击已识别位置";
+            : "将中心准星对准已识别平面，准星变绿后点击屏幕确认";
         if (Time.unscaledTime < transientUntil && !string.IsNullOrEmpty(transientMessage))
             hint = transientMessage;
 
