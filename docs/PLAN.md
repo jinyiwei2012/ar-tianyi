@@ -11,7 +11,8 @@
 - **Phase 0 已完成**：依赖、场景、构建、真机运行均就绪（历史"未完成"表述已修正）。
 - **Phase 1 主体完成**：ARScene 可运行，真机已验证模型显示、相机读取、放置 UI、平面识别与 Anchor。
 - **进行中**：`HANDOFF_AR_PLACEMENT.md`（debut 分支）记录的"模型不在准星位置"偏移问题。已实现中心准星模式 / 拖动阈值 / Placement Root / footCenter 完整 XYZ 对齐，等待真机复测。
-- **未开始**：Phase 2（移动）、Phase 3（遮挡）待排；`OcclusionController` 已含设备能力降级。
+- **Phase 2 代码已实现（待真机验证）**：点击已放置模型 → 洛天依走向目标点（LuoMovement 状态机 + 贴地 raycast + 行走时暂停 billboard），拖动仍可瞬移接管；`feat/phase2-movement` 分支。
+- **未开始**：Phase 3（遮挡）待排；`OcclusionController` 已含设备能力降级。
 
 ---
 

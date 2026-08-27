@@ -46,9 +46,9 @@ ar tianyi/
 | `PlaceOnPlane.cs` | 放置/拖动/缩放 + Placement Root + footCenter 完整 XYZ 对齐 + 诊断采样 |
 | `PlacementGuideUI.cs` | 准星/点击反馈/状态提示（OnGUI） |
 | `RuntimeDebugPanel.cs` | 真机调试面板 + 一键复制诊断报告 |
-| `CylindricalBillboard.cs` | 绕世界 Y 轴面向相机（正面朝 -Z） |
+| `CylindricalBillboard.cs` | 绕世界 Y 轴面向相机（正面朝 -Z，支持行走时暂停） |
 | `OcclusionController.cs` | AR 遮挡与设备能力降级 |
-| `LuoMovement.cs` | 移动能力（Phase 2） |
+| `LuoMovement.cs` | 移动能力（Phase 2）：点击走路 + 状态机 + 贴地 raycast，由 PlaceOnPlane 挂载 |
 
 ## ASSET MAP（live2d/models/luo/）
 
