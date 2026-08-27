@@ -59,6 +59,9 @@ public class PlaceOnPlane : MonoBehaviour
     private Vector3 lastAlignmentError;
     private readonly List<GameObject> diagnosticMarkers = new();
 
+    // Phase 2 移动：模型放置后挂载到 Placement Root 上，由点击走路 / 拖动接管。
+    private LuoMovement luoMovement;
+
     private void Awake()
     {
         raycastManager = GetComponent<ARRaycastManager>();
@@ -111,8 +114,44 @@ public class PlaceOnPlane : MonoBehaviour
             ? new Vector2(Screen.width * 0.5f, Screen.height * 0.5f)
             : finger.screenPosition;
 
+        // Phase 2：已放置且模型就绪 → 点击目标点让洛天依走过去；否则走原有放置逻辑。
+        if (spawnedModel != null && modelReady && luoMovement != null)
+        {
+            TryWalkTo(requestPoint);
+            return;
+        }
+
         guideUI?.ShowTap(requestPoint);
         TryPlaceAtScreenPosition(requestPoint, true);
+    }
+
+    private void TryWalkTo(Vector2 screenPosition)
+    {
+        if (!raycastManager.Raycast(screenPosition, hits, TrackableType.PlaneWithinPolygon))
+        {
+            hits.Clear();
+            guideUI?.ReportPlacement(screenPosition, false, "这里还没有可通行的平面，请继续扫描后再试。");
+            return;
+        }
+
+        var hit = hits[0];
+        hits.Clear();
+        var plane = planeManager.GetPlane(hit.trackableId);
+        if (plane == null || plane.alignment == PlaneAlignment.Vertical)
+        {
+            guideUI?.ReportPlacement(screenPosition, false, "该位置不是可通行的水平平面。");
+            return;
+        }
+
+        // 记录本次命中诊断样本（与放置共用同一套字段）。
+        hasPlacementSample = true;
+        lastRequestScreenPoint = screenPosition;
+        lastHitPosition = hit.pose.position;
+        lastHitRotation = hit.pose.rotation;
+
+        guideUI?.ShowTap(screenPosition);
+        guideUI?.ReportPlacement(screenPosition, true, "正在前往指定位置…");
+        luoMovement.WalkTo(hit.pose.position);
     }
 
     private void OnFingerMove(Finger finger)
@@ -129,6 +168,9 @@ public class PlaceOnPlane : MonoBehaviour
             if (Vector2.Distance(finger.screenPosition, dragStartScreen) < dragThresholdPixels)
                 return;
             isDragging = true;
+            // 拖动接管：打断正在进行的走路。
+            if (luoMovement != null)
+                luoMovement.Stop();
         }
 
         // 拖动始终跟随手指落点（模型由用户拖到屏幕上手指的位置）。
@@ -215,6 +257,11 @@ public class PlaceOnPlane : MonoBehaviour
             spawnedModel.transform.localPosition = Vector3.zero;
             var billboard = spawnedModel.AddComponent<CylindricalBillboard>();
             billboard.SetCamera(Camera.main);
+
+            // Phase 2：移动组件挂到稳定根节点，注入 raycast（贴地）与 billboard（行走时暂停朝向）。
+            luoMovement = placementRoot.AddComponent<LuoMovement>();
+            luoMovement.Initialize(raycastManager, billboard);
+
             SetModelRenderersEnabled(false);
             modelReady = false;
             modelLoadFailure = null;
@@ -223,6 +270,10 @@ public class PlaceOnPlane : MonoBehaviour
         }
         else
         {
+            // 重挂 Anchor 会改变位置，先打断正在进行的走路。
+            if (luoMovement != null)
+                luoMovement.Stop();
+
             placementRoot.transform.SetParent(currentAnchor.transform, false);
             placementRoot.transform.localPosition = Vector3.zero;
             spawnedModel.GetComponent<CylindricalBillboard>()?.FaceCameraNow();
