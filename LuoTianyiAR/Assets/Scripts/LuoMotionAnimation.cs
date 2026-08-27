@@ -31,6 +31,7 @@ public class LuoMotionAnimation : MonoBehaviour
 
     private bool isWalking;
     private float nextBlinkAt;
+    private float walkingIntensity = 1f;
 
     private void Start()
     {
@@ -83,6 +84,12 @@ public class LuoMotionAnimation : MonoBehaviour
         }
     }
 
+    /// <summary>由 LuoMovement 在行走时传入当前强度（0=减速停止，1=全速），联动律动频率与幅度。</summary>
+    public void SetWalkingIntensity(float intensity)
+    {
+        walkingIntensity = Mathf.Clamp01(intensity);
+    }
+
     private void Update()
     {
         if (isWalking)
@@ -112,14 +119,15 @@ public class LuoMotionAnimation : MonoBehaviour
     private void UpdateWalking()
     {
         float t = Time.time;
-        float phase = t * walkFrequency * Mathf.PI * 2f;
+        // 频率与幅度随行走强度联动：减速时身体律动变慢变弱。
+        float phase = t * walkFrequency * walkingIntensity * Mathf.PI * 2f;
 
         // 走路律动：身体前后倾 + 左右摆动
         // （腿部 Param9x 参数未知，待真机调参后补充）
         if (bodyAngleZ != null)
-            bodyAngleZ.Value = walkBounceAmplitude * Mathf.Sin(phase);
+            bodyAngleZ.Value = walkBounceAmplitude * walkingIntensity * Mathf.Sin(phase);
         if (bodyAngleY != null)
-            bodyAngleY.Value = walkSwayAmplitude * Mathf.Sin(phase * 0.5f);
+            bodyAngleY.Value = walkSwayAmplitude * walkingIntensity * Mathf.Sin(phase * 0.5f);
 
         // 走路时睁眼
         if (eyeLOpen != null) eyeLOpen.Value = 1f;

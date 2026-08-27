@@ -14,6 +14,10 @@ public class LuoMovement : MonoBehaviour
     [SerializeField] private float turnSpeed = 360f;      // 度/秒
     [Tooltip("向下 raycast 贴地的偏移量（从脚底向下探测）")]
     [SerializeField] private float groundProbeOffset = 0.05f;
+    [Tooltip("接近目标多少米内开始减速")]
+    [SerializeField] private float slowDownDistance = 0.5f;
+    [Tooltip("减速时的最低移动速度（米/秒）")]
+    [SerializeField, Min(0.02f)] private float minimumMoveSpeed = 0.08f;
 
     private ARRaycastManager raycastManager;
     private CylindricalBillboard billboard;
@@ -86,10 +90,19 @@ public class LuoMovement : MonoBehaviour
             isWalking = true;
             RotateToward(toTarget);
 
-            Vector3 move = toTarget.normalized * moveSpeed * Time.deltaTime;
+            // 接近目标减速（最后 0.5m 线性减速），并联动动画强度，形成"逐渐停下"的走路感。
+            float currentSpeed = moveSpeed;
+            if (distance < slowDownDistance)
+                currentSpeed = Mathf.Max(minimumMoveSpeed, moveSpeed * (distance / slowDownDistance));
+
+            Vector3 move = toTarget.normalized * currentSpeed * Time.deltaTime;
             if (move.magnitude > distance)
                 move = toTarget;          // 避免过冲
             transform.position += move;
+
+            if (motionAnimation != null)
+                motionAnimation.SetWalkingIntensity(currentSpeed / moveSpeed);
+
             KeepOnGround();
         }
         else
