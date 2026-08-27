@@ -496,6 +496,7 @@ public class PlaceOnPlane : MonoBehaviour
     public bool IsModelReady => modelReady;
     public bool IsModelLoading => spawnedModel != null && !modelReady && string.IsNullOrEmpty(modelLoadFailure);
     public string ModelLoadFailure => modelLoadFailure;
+    public bool IsWalking => luoMovement != null && luoMovement.IsWalking;
 
     public string GetDebugSnapshot()
     {
