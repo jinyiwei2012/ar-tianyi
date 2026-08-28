@@ -17,6 +17,7 @@ public static class ARSceneSetup
     private const string MarkerTexturePath = "Assets/AR/Markers/LuoTianyiDeskMarkerV1.png";
     private const string MarkerLibraryPath = "Assets/AR/Markers/LuoTianyiMarkerLibrary.asset";
     private const string MarkerMaterialPath = "Assets/AR/Markers/MarkerDiagnosticUnlit.mat";
+    private const string HarmonizationShadowMaterialPath = "Assets/Settings/AutoHarmonizationShadow.mat";
     private const float MarkerPhysicalSizeMeters = 0.12f;
 
     public static void CreateARScene()
@@ -59,8 +60,9 @@ public static class ARSceneSetup
         // Google Play Services for AR 在 URP 的该路径上会只显示清屏色。
         // AfterOpaques 仍早于 Cubism 的 BeforeRenderingTransparents，既能避开
         // 相机黑屏兼容性问题，也不会覆盖透明 Live2D 模型。
-        cameraGo.GetComponent<ARCameraManager>().requestedBackgroundRenderingMode =
-            CameraBackgroundRenderingMode.AfterOpaques;
+        var cameraManager = cameraGo.GetComponent<ARCameraManager>();
+        cameraManager.requestedBackgroundRenderingMode = CameraBackgroundRenderingMode.AfterOpaques;
+        cameraManager.requestedLightEstimation = AutoHarmonizationController.WorldLightEstimation;
 
         // TrackedPoseDriver 绑定 AR 输入
         var tpd = cameraGo.GetComponent<TrackedPoseDriver>();
@@ -98,6 +100,8 @@ public static class ARSceneSetup
         placementObject.ApplyModifiedPropertiesWithoutUndo();
         originGo.AddComponent<PlacementGuideUI>();
         originGo.AddComponent<PositionLockUI>();
+        var harmonization = originGo.AddComponent<AutoHarmonizationController>();
+        ConfigureHarmonizationMaterial(harmonization);
         originGo.AddComponent<CameraCaptureUI>();
 
         // 5. 遮挡必须和 ARCameraManager/Camera 在同一对象；否则 RequireComponent 会在
@@ -127,6 +131,7 @@ public static class ARSceneSetup
         if (cameraManager == null)
             throw new System.InvalidOperationException("[ARSceneSetup] 未找到 ARCameraManager");
         cameraManager.requestedBackgroundRenderingMode = CameraBackgroundRenderingMode.AfterOpaques;
+        cameraManager.requestedLightEstimation = AutoHarmonizationController.WorldLightEstimation;
         EditorUtility.SetDirty(cameraManager);
 
         foreach (var diagnostics in originGo.GetComponents<ARMarkerDiagnostics>())
@@ -146,10 +151,56 @@ public static class ARSceneSetup
                 originGo.AddComponent<CameraCaptureUI>();
             if (originGo.GetComponent<CaptureGalleryUI>() == null)
                 originGo.AddComponent<CaptureGalleryUI>();
+            var harmonization = originGo.GetComponent<AutoHarmonizationController>() ??
+                                originGo.AddComponent<AutoHarmonizationController>();
+            ConfigureHarmonizationMaterial(harmonization);
         }
         EditorSceneManager.SaveScene(scene);
         AssetDatabase.SaveAssets();
-        Debug.Log("[ARSceneSetup] 已切换为纯平面定位，AR 背景强制 AfterOpaques，并接入 4:3 相机界面与图层拍摄");
+        Debug.Log("[ARSceneSetup] 已切换为纯平面定位，AR 背景强制 AfterOpaques，并接入默认开启的自动融合与分层拍摄");
+    }
+
+    private static void ConfigureHarmonizationMaterial(AutoHarmonizationController harmonization)
+    {
+        Texture2D[] shadowMasks = ShadowMaskGenerator.EnsureGenerated();
+        var material = AssetDatabase.LoadAssetAtPath<Material>(HarmonizationShadowMaterialPath);
+        if (material == null)
+        {
+            Shader shader = Shader.Find("LuoTianyiAR/SoftShadow");
+            if (shader == null)
+                throw new System.InvalidOperationException("[ARSceneSetup] 找不到 LuoTianyiAR/SoftShadow Shader");
+
+            EnsureAssetFolder("Assets/Settings");
+            material = new Material(shader)
+            {
+                name = "AutoHarmonizationShadow"
+            };
+            material.SetColor("_BaseColor", new Color(0.018f, 0.020f, 0.028f, 0.25f));
+            material.SetFloat("_Softness", 0.72f);
+            AssetDatabase.CreateAsset(material, HarmonizationShadowMaterialPath);
+        }
+
+        material.SetTexture("_ShadowMask", shadowMasks[0]);
+
+        var serialized = new SerializedObject(harmonization);
+        serialized.FindProperty("shadowMaterial").objectReferenceValue = material;
+        serialized.FindProperty("primaryShadowMask").objectReferenceValue = shadowMasks[0];
+        serialized.FindProperty("alternateShadowMask").objectReferenceValue = shadowMasks[1];
+        serialized.ApplyModifiedPropertiesWithoutUndo();
+        EditorUtility.SetDirty(harmonization);
+        EditorUtility.SetDirty(material);
+    }
+
+    private static void EnsureAssetFolder(string folder)
+    {
+        if (AssetDatabase.IsValidFolder(folder))
+            return;
+
+        string parent = System.IO.Path.GetDirectoryName(folder)?.Replace('\\', '/');
+        string name = System.IO.Path.GetFileName(folder);
+        if (!string.IsNullOrEmpty(parent) && !AssetDatabase.IsValidFolder(parent))
+            EnsureAssetFolder(parent);
+        AssetDatabase.CreateFolder(parent, name);
     }
 
     private static void ConfigureMarkerTracking(GameObject originGo)

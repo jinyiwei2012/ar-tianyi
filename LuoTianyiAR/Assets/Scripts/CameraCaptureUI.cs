@@ -1,6 +1,7 @@
 // CameraCaptureUI.cs — 4:3 AR 相机界面、前后摄切换与三图层照片保存。
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 using UnityEngine.InputSystem.XR;
@@ -21,9 +22,15 @@ public sealed class CameraCaptureUI : MonoBehaviour
     private static Rect recycleRect;
     private static Rect flipRect;
     private static Rect thumbnailRect;
+    private static Rect expressionButtonRect;
     private static Rect debugButtonRect;
+    private static Rect harmonizationButtonRect;
+    private static Rect manualLightButtonRect;
+    private static Rect manualLightMenuRect;
+    private static Rect manualCalibrationPanelRect;
 
     private PlaceOnPlane placement;
+    private AutoHarmonizationController harmonization;
     private ARSession arSession;
     private CaptureGalleryUI gallery;
     private Camera arCamera;
@@ -34,13 +41,25 @@ public sealed class CameraCaptureUI : MonoBehaviour
     private Texture2D recycleIcon;
     private Texture2D flipIcon;
     private Texture2D debugIcon;
+    private Texture2D expressionIcon;
+    private Texture2D manualLightAddIcon;
+    private Texture2D manualLightReadyIcon;
     private Texture2D pixel;
     private Texture2D lastThumbnail;
     private GUIStyle titleStyle;
     private GUIStyle statusStyle;
     private GUIStyle smallStyle;
+    private GUIStyle harmonizationStyle;
+    private GUIStyle calibrationTitleStyle;
+    private GUIStyle calibrationBodyStyle;
+    private GUIStyle calibrationButtonStyle;
+    private GUIStyle manualLightParameterStyle;
+    private GUIStyle manualLightButtonStyle;
+    private GUIStyle manualLightSliderStyle;
+    private GUIStyle manualLightSliderThumbStyle;
     private bool isCapturing;
     private bool isSwitchingCamera;
+    private bool showManualLightMenu;
     private string operationStatus = "平面定位";
     private float statusUntil;
     private float flashStartedAt = -10f;
@@ -48,11 +67,17 @@ public sealed class CameraCaptureUI : MonoBehaviour
     private bool recycledForPause;
 
     public static bool IsCapturing => instance != null && instance.isCapturing;
+    public static bool IsManualLightCalibrationActive =>
+        instance != null && instance.harmonization != null && instance.harmonization.IsManualCalibrationActive;
+    public static bool IsManualLightEditing =>
+        instance != null && (instance.showManualLightMenu || IsManualLightCalibrationActive);
 
     private void Awake()
     {
         instance = this;
         placement = GetComponent<PlaceOnPlane>();
+        harmonization = GetComponent<AutoHarmonizationController>() ??
+                        gameObject.AddComponent<AutoHarmonizationController>();
         gallery = GetComponent<CaptureGalleryUI>() ?? gameObject.AddComponent<CaptureGalleryUI>();
         arSession = FindFirstObjectByType<ARSession>(FindObjectsInactive.Include);
         arCamera = Camera.main;
@@ -67,6 +92,9 @@ public sealed class CameraCaptureUI : MonoBehaviour
         recycleIcon = Resources.Load<Texture2D>("UI/recycle-model");
         flipIcon = Resources.Load<Texture2D>("UI/flip-camera");
         debugIcon = Resources.Load<Texture2D>("UI/debug-wrench");
+        expressionIcon = CreateExpressionIcon();
+        manualLightAddIcon = CreateManualLightIcon(false);
+        manualLightReadyIcon = CreateManualLightIcon(true);
         pixel = new Texture2D(1, 1, TextureFormat.RGBA32, false);
         pixel.SetPixel(0, 0, Color.white);
         pixel.Apply();
@@ -94,9 +122,13 @@ public sealed class CameraCaptureUI : MonoBehaviour
 
         var guiPoint = new Vector2(screenPosition.x, Screen.height - screenPosition.y);
         return CaptureGalleryUI.IsOpen || instance.isCapturing || instance.isSwitchingCamera ||
+               IsManualLightCalibrationActive ||
                topBarRect.Contains(guiPoint) || bottomBarRect.Contains(guiPoint) ||
                shutterRect.Contains(guiPoint) || recycleRect.Contains(guiPoint) || flipRect.Contains(guiPoint) ||
-               thumbnailRect.Contains(guiPoint) || debugButtonRect.Contains(guiPoint);
+               thumbnailRect.Contains(guiPoint) || expressionButtonRect.Contains(guiPoint) ||
+               debugButtonRect.Contains(guiPoint) ||
+               harmonizationButtonRect.Contains(guiPoint) || manualLightButtonRect.Contains(guiPoint) ||
+               manualLightMenuRect.Contains(guiPoint) || manualCalibrationPanelRect.Contains(guiPoint);
     }
 
     private void OnGUI()
@@ -109,7 +141,12 @@ public sealed class CameraCaptureUI : MonoBehaviour
             recycleRect = Rect.zero;
             flipRect = Rect.zero;
             thumbnailRect = Rect.zero;
+            expressionButtonRect = Rect.zero;
             debugButtonRect = Rect.zero;
+            harmonizationButtonRect = Rect.zero;
+            manualLightButtonRect = Rect.zero;
+            manualLightMenuRect = Rect.zero;
+            manualCalibrationPanelRect = Rect.zero;
             return;
         }
 
@@ -122,34 +159,313 @@ public sealed class CameraCaptureUI : MonoBehaviour
         DrawSolid(bottomBarRect, Color.black);
 
         float scale = Mathf.Clamp(Screen.width / 1260f, 0.75f, 1.5f);
-        float safeTop = Screen.height - Screen.safeArea.yMax;
-        float topContentY = safeTop + Mathf.Max(12f, topBarRect.height * 0.16f);
-        GUI.Label(
-            new Rect(30f * scale, topContentY, Screen.width - 60f * scale, 58f * scale),
-            "洛天依 AR 相机",
-            titleStyle);
-
-        string facing = cameraManager == null
-            ? "相机不可用"
-            : cameraManager.currentFacingDirection == CameraFacingDirection.User
-                ? "前置相机"
-                : "后置相机";
-        string status = Time.unscaledTime < statusUntil ? operationStatus : $"{facing}  ·  平面定位";
-        GUI.Label(
-            new Rect(30f * scale, topContentY + 58f * scale, Screen.width - 60f * scale, 44f * scale),
-            status,
-            statusStyle);
+        DrawHarmonizationButton(topBarRect, scale);
+        DrawManualLightButton(topBarRect, scale);
         DrawDebugButton(topBarRect, scale);
 
         DrawSolid(new Rect(0f, viewfinder.y, Screen.width, 2f), new Color(1f, 1f, 1f, 0.16f));
         DrawSolid(new Rect(0f, viewfinder.yMax - 2f, Screen.width, 2f), new Color(1f, 1f, 1f, 0.16f));
         DrawBottomControls(bottomBarRect, scale);
+        DrawManualLightMenu(scale);
+        DrawManualLightCalibration(viewfinder, scale);
         DrawCaptureFlash(viewfinder);
+    }
+
+    private void DrawHarmonizationButton(Rect topBar, float scale)
+    {
+        float buttonSize = GetToolbarButtonSize(topBar, scale);
+        float leftMargin = Mathf.Max(32f * scale, Screen.safeArea.x + 24f * scale);
+        harmonizationButtonRect = new Rect(
+            leftMargin,
+            topBar.y + (topBar.height - buttonSize) * 0.5f,
+            buttonSize,
+            buttonSize);
+
+        GUI.enabled = !isCapturing && !isSwitchingCamera && !RuntimeDebugPanel.IsOpen &&
+                      !IsManualLightCalibrationActive;
+        if (GUI.Button(harmonizationButtonRect, GUIContent.none, GUIStyle.none))
+            harmonization?.ToggleFromToolbar();
+        GUI.enabled = true;
+
+        Color previous = harmonizationStyle.normal.textColor;
+        harmonizationStyle.normal.textColor = harmonization != null && harmonization.IsHarmonizationEnabled
+            ? new Color(1f, 0.82f, 0.14f, 1f)
+            : Color.white;
+        float visualSize = buttonSize * 1.30f;
+        var visualRect = new Rect(
+            harmonizationButtonRect.center.x - visualSize * 0.5f,
+            harmonizationButtonRect.center.y - visualSize * 0.5f,
+            visualSize,
+            visualSize);
+        GUI.Label(visualRect, "H", harmonizationStyle);
+        harmonizationStyle.normal.textColor = previous;
+    }
+
+    private void DrawManualLightButton(Rect topBar, float scale)
+    {
+        float buttonSize = GetToolbarButtonSize(topBar, scale);
+        manualLightButtonRect = new Rect(
+            harmonizationButtonRect.xMax + 72f * scale,
+            harmonizationButtonRect.y,
+            buttonSize,
+            buttonSize);
+
+        bool modelReady = placement != null && placement.IsModelReady;
+        bool canInteract = modelReady && !isCapturing && !isSwitchingCamera &&
+                           !RuntimeDebugPanel.IsOpen && !IsManualLightCalibrationActive;
+        GUI.enabled = canInteract;
+        if (GUI.Button(manualLightButtonRect, GUIContent.none, GUIStyle.none))
+        {
+            if (harmonization != null && harmonization.HasManualLight)
+            {
+                showManualLightMenu = !showManualLightMenu;
+            }
+            else if (harmonization != null)
+            {
+                if (harmonization.BeginManualLightCalibration(out string message))
+                    showManualLightMenu = false;
+                ShowStatus(message, 3f);
+            }
+        }
+        GUI.enabled = true;
+
+        Texture2D icon = harmonization != null && harmonization.HasManualLight
+            ? manualLightReadyIcon
+            : manualLightAddIcon;
+        if (icon != null)
+        {
+            Color previous = GUI.color;
+            GUI.color = !modelReady
+                ? new Color(0.45f, 0.45f, 0.45f, 1f)
+                : harmonization != null && harmonization.HasManualLight
+                    ? new Color(1f, 0.78f, 0.10f, 1f)
+                    : Color.white;
+            float visualSize = buttonSize * 1.586f;
+            var visualRect = new Rect(
+                manualLightButtonRect.center.x - visualSize * 0.5f,
+                manualLightButtonRect.center.y - visualSize * 0.5f,
+                visualSize,
+                visualSize);
+            GUI.DrawTexture(visualRect, icon, ScaleMode.ScaleToFit, true);
+            GUI.color = previous;
+        }
+    }
+
+    private void DrawManualLightMenu(float scale)
+    {
+        if (!showManualLightMenu || harmonization == null || !harmonization.HasManualLight ||
+            RuntimeDebugPanel.IsOpen || IsManualLightCalibrationActive)
+        {
+            manualLightMenuRect = Rect.zero;
+            return;
+        }
+
+        float toolbarIconSize = GetToolbarButtonSize(topBarRect, scale);
+        float width = Mathf.Min(Screen.width - 24f * scale, 1120f * scale);
+        float height = 540f * scale;
+        manualLightMenuRect = new Rect(
+            Mathf.Clamp(manualLightButtonRect.x, 12f, Screen.width - width - 12f),
+            topBarRect.yMax + 12f * scale,
+            width,
+            height);
+        DrawSolid(manualLightMenuRect, new Color(0.015f, 0.02f, 0.025f, 0.90f));
+
+        manualLightParameterStyle.fontSize = Mathf.RoundToInt(toolbarIconSize);
+        manualLightButtonStyle.fontSize = Mathf.RoundToInt(toolbarIconSize);
+        manualLightSliderStyle.fixedHeight = 14f * scale;
+        manualLightSliderThumbStyle.fixedWidth = toolbarIconSize;
+        manualLightSliderThumbStyle.fixedHeight = toolbarIconSize;
+
+        float horizontalPadding = 24f * scale;
+        float labelWidth = 410f * scale;
+        float rowHeight = Mathf.Max(100f * scale, toolbarIconSize);
+        float rowGap = 28f * scale;
+        float sliderGap = 24f * scale;
+        float sliderX = manualLightMenuRect.x + horizontalPadding + labelWidth + sliderGap;
+        float sliderWidth = manualLightMenuRect.xMax - horizontalPadding - sliderX;
+        float firstRowY = manualLightMenuRect.y + 18f * scale;
+
+        Rect FirstLabelRect(float rowY) => new(
+            manualLightMenuRect.x + horizontalPadding,
+            rowY,
+            labelWidth,
+            rowHeight);
+        Rect SliderRect(float rowY) => new(
+            sliderX,
+            rowY,
+            sliderWidth,
+            rowHeight);
+
+        GUI.Label(
+            FirstLabelRect(firstRowY),
+            $"主光 {harmonization.ManualLightStrength:F2}",
+            manualLightParameterStyle);
+        float value = GUI.HorizontalSlider(
+            SliderRect(firstRowY),
+            harmonization.ManualLightStrength,
+            0.15f,
+            0.65f,
+            manualLightSliderStyle,
+            manualLightSliderThumbStyle);
+        harmonization.SetManualLightStrength(value);
+
+        float secondRowY = firstRowY + rowHeight + rowGap;
+        GUI.Label(
+            FirstLabelRect(secondRowY),
+            $"影长 {harmonization.ShadowLengthScale:F2}",
+            manualLightParameterStyle);
+        float lengthValue = GUI.HorizontalSlider(
+            SliderRect(secondRowY),
+            harmonization.ShadowLengthScale,
+            0.35f,
+            1.10f,
+            manualLightSliderStyle,
+            manualLightSliderThumbStyle);
+        harmonization.SetShadowLengthScale(lengthValue);
+
+        float thirdRowY = secondRowY + rowHeight + rowGap;
+        GUI.Label(
+            FirstLabelRect(thirdRowY),
+            $"硬度 {harmonization.ShadowHardness:F2}",
+            manualLightParameterStyle);
+        float hardnessValue = GUI.HorizontalSlider(
+            SliderRect(thirdRowY),
+            harmonization.ShadowHardness,
+            0f,
+            1f,
+            manualLightSliderStyle,
+            manualLightSliderThumbStyle);
+        harmonization.SetShadowHardness(hardnessValue);
+
+        float buttonY = manualLightMenuRect.yMax - 118f * scale;
+        float gap = 20f * scale;
+        float buttonWidth = (manualLightMenuRect.width - 36f * scale - gap) * 0.5f;
+        if (GUI.Button(
+                new Rect(manualLightMenuRect.x + 18f * scale, buttonY, buttonWidth, 100f * scale),
+                "重新标定",
+                manualLightButtonStyle))
+        {
+            if (harmonization.BeginManualLightCalibration(out string message))
+            {
+                showManualLightMenu = false;
+                ShowStatus(message, 3f);
+            }
+            else
+            {
+                ShowStatus(message, 3f);
+            }
+        }
+        if (GUI.Button(
+                new Rect(
+                    manualLightMenuRect.x + 18f * scale + buttonWidth + gap,
+                    buttonY,
+                    buttonWidth,
+                    100f * scale),
+                "删除光源",
+                manualLightButtonStyle))
+        {
+            harmonization.ClearManualLight();
+            showManualLightMenu = false;
+            ShowStatus("已恢复 ARCore 自动主光", 3f);
+        }
+    }
+
+    private void DrawManualLightCalibration(Rect viewfinder, float scale)
+    {
+        if (harmonization == null || !harmonization.IsManualCalibrationActive)
+        {
+            manualCalibrationPanelRect = Rect.zero;
+            return;
+        }
+
+        showManualLightMenu = false;
+        float crosshairSize = Mathf.Clamp(Screen.width * 0.12f, 110f, 172f);
+        Rect crosshair = new(
+            viewfinder.center.x - crosshairSize * 0.5f,
+            viewfinder.center.y - crosshairSize * 0.5f,
+            crosshairSize,
+            crosshairSize);
+        Color guideColor = new(1f, 0.78f, 0.10f, 1f);
+        DrawOutline(crosshair, guideColor, 5f * scale);
+        DrawSolid(new Rect(crosshair.center.x - 2f * scale, crosshair.y - 14f * scale, 4f * scale, 28f * scale), guideColor);
+        DrawSolid(new Rect(crosshair.center.x - 2f * scale, crosshair.yMax - 14f * scale, 4f * scale, 28f * scale), guideColor);
+        DrawSolid(new Rect(crosshair.x - 14f * scale, crosshair.center.y - 2f * scale, 28f * scale, 4f * scale), guideColor);
+        DrawSolid(new Rect(crosshair.xMax - 14f * scale, crosshair.center.y - 2f * scale, 28f * scale, 4f * scale), guideColor);
+
+        float panelWidth = Mathf.Min(viewfinder.width - 40f * scale, 820f * scale);
+        float panelHeight = 238f * scale;
+        manualCalibrationPanelRect = new Rect(
+            viewfinder.center.x - panelWidth * 0.5f,
+            viewfinder.yMax - panelHeight - 30f * scale,
+            panelWidth,
+            panelHeight);
+        DrawSolid(manualCalibrationPanelRect, new Color(0f, 0f, 0f, 0.78f));
+        GUI.Label(
+            new Rect(
+                manualCalibrationPanelRect.x + 20f * scale,
+                manualCalibrationPanelRect.y + 10f * scale,
+                manualCalibrationPanelRect.width - 40f * scale,
+                52f * scale),
+            "将光源置于准星内",
+            calibrationTitleStyle);
+        GUI.Label(
+            new Rect(
+                manualCalibrationPanelRect.x + 20f * scale,
+                manualCalibrationPanelRect.y + 64f * scale,
+                manualCalibrationPanelRect.width - 40f * scale,
+                48f * scale),
+            harmonization.ManualCalibrationStatus,
+            calibrationBodyStyle);
+        Rect progressBackground = new(
+            manualCalibrationPanelRect.x + 28f * scale,
+            manualCalibrationPanelRect.y + 117f * scale,
+            manualCalibrationPanelRect.width - 56f * scale,
+            12f * scale);
+        DrawSolid(progressBackground, new Color(1f, 1f, 1f, 0.18f));
+        DrawSolid(
+            new Rect(
+                progressBackground.x,
+                progressBackground.y,
+                progressBackground.width * harmonization.ManualCalibrationProgress,
+                progressBackground.height),
+            guideColor);
+        Rect tintSwatch = new(
+            manualCalibrationPanelRect.x + 28f * scale,
+            manualCalibrationPanelRect.y + 142f * scale,
+            34f * scale,
+            34f * scale);
+        DrawSolid(tintSwatch, harmonization.ManualCalibrationPreviewTint);
+
+        float gap = 18f * scale;
+        float buttonWidth = (manualCalibrationPanelRect.width - 56f * scale - gap) * 0.5f;
+        float buttonY = manualCalibrationPanelRect.yMax - 62f * scale;
+        if (GUI.Button(
+                new Rect(manualCalibrationPanelRect.x + 28f * scale, buttonY, buttonWidth, 50f * scale),
+                "取消",
+                calibrationButtonStyle))
+        {
+            harmonization.CancelManualLightCalibration();
+            ShowStatus("已取消光源标定", 2.5f);
+        }
+        if (GUI.Button(
+                new Rect(
+                    manualCalibrationPanelRect.x + 28f * scale + buttonWidth + gap,
+                    buttonY,
+                    buttonWidth,
+                    50f * scale),
+                "完成",
+                calibrationButtonStyle))
+        {
+            if (harmonization.TryCompleteManualLightCalibration(out string message))
+                ShowStatus(message, 3f);
+            else
+                ShowStatus(message, 2.5f);
+        }
     }
 
     private void DrawDebugButton(Rect topBar, float scale)
     {
-        float buttonSize = Mathf.Clamp(topBar.height * 0.28f, 64f * scale, 92f * scale);
+        float buttonSize = GetToolbarButtonSize(topBar, scale);
         float rightMargin = Mathf.Max(32f * scale, Screen.width - Screen.safeArea.xMax + 24f * scale);
         debugButtonRect = new Rect(
             Screen.width - rightMargin - buttonSize,
@@ -157,8 +473,10 @@ public sealed class CameraCaptureUI : MonoBehaviour
             buttonSize,
             buttonSize);
 
+        GUI.enabled = !IsManualLightCalibrationActive;
         if (GUI.Button(debugButtonRect, GUIContent.none, GUIStyle.none))
             RuntimeDebugPanel.ToggleFromToolbar();
+        GUI.enabled = true;
         if (debugIcon != null)
             GUI.DrawTexture(debugButtonRect, debugIcon, ScaleMode.ScaleToFit, true);
     }
@@ -190,12 +508,35 @@ public sealed class CameraCaptureUI : MonoBehaviour
             flipRect.y,
             secondarySize,
             secondarySize);
+        float expressionGapWidth = shutterRect.x - thumbnailRect.xMax;
+        expressionButtonRect = new Rect(
+            thumbnailRect.xMax + (expressionGapWidth - secondarySize) * 0.5f,
+            thumbnailRect.y,
+            secondarySize,
+            secondarySize);
+
+        string facing = cameraManager == null
+            ? "相机不可用"
+            : cameraManager.currentFacingDirection == CameraFacingDirection.User
+                ? "前置相机"
+                : "后置相机";
+        string status = Time.unscaledTime < statusUntil ? operationStatus : $"{facing}  ·  平面定位";
+        float statusWidth = Mathf.Min(Screen.width - 40f * scale, 560f * scale);
+        GUI.Label(
+            new Rect(
+                shutterRect.center.x - statusWidth * 0.5f,
+                shutterRect.y - 50f * scale,
+                statusWidth,
+                44f * scale),
+            status,
+            statusStyle);
 
         if (lastThumbnail != null)
         {
             GUI.DrawTexture(thumbnailRect, lastThumbnail, ScaleMode.ScaleAndCrop, false);
             DrawOutline(thumbnailRect, new Color(1f, 1f, 1f, 0.65f), 3f * scale);
-            if (!RuntimeDebugPanel.IsOpen && GUI.Button(thumbnailRect, GUIContent.none, GUIStyle.none) &&
+            if (!RuntimeDebugPanel.IsOpen && !IsManualLightCalibrationActive &&
+                GUI.Button(thumbnailRect, GUIContent.none, GUIStyle.none) &&
                 (gallery == null || !gallery.OpenLatest()))
                 ShowStatus("照片无法打开", 2.5f);
         }
@@ -205,14 +546,52 @@ public sealed class CameraCaptureUI : MonoBehaviour
             GUI.Label(thumbnailRect, "照片", smallStyle);
         }
 
-        GUI.enabled = !isCapturing && !isSwitchingCamera && !RuntimeDebugPanel.IsOpen;
+        bool canChangeExpression = placement != null && placement.IsModelReady;
+        GUI.enabled = !isCapturing && !isSwitchingCamera && !RuntimeDebugPanel.IsOpen &&
+                      !IsManualLightCalibrationActive && canChangeExpression;
+        if (GUI.Button(expressionButtonRect, GUIContent.none, GUIStyle.none))
+        {
+            if (placement.TryNextExpression(out string expressionName))
+            {
+                harmonization?.SetShadowMaskVariant(UsesAlternateShadowMask(expressionName) ? 1 : 0);
+                ShowStatus($"表情：{expressionName}", 1.8f);
+            }
+            else
+                ShowStatus("表情不可用", 1.8f);
+        }
+        GUI.enabled = true;
+        if (expressionIcon != null)
+        {
+            Color previous = GUI.color;
+            GUI.color = canChangeExpression
+                ? Color.white
+                : new Color(0.60f, 0.60f, 0.60f, 1f);
+            GUI.DrawTexture(expressionButtonRect, expressionIcon, ScaleMode.ScaleToFit, true);
+            GUI.color = previous;
+        }
+        if (canChangeExpression)
+        {
+            float labelWidth = secondarySize * 1.7f;
+            GUI.Label(
+                new Rect(
+                    expressionButtonRect.center.x - labelWidth * 0.5f,
+                    expressionButtonRect.yMax + 8f * scale,
+                    labelWidth,
+                    42f * scale),
+                "切换表情",
+                statusStyle);
+        }
+
+        GUI.enabled = !isCapturing && !isSwitchingCamera && !RuntimeDebugPanel.IsOpen &&
+                      !IsManualLightCalibrationActive;
         if (GUI.Button(shutterRect, GUIContent.none, GUIStyle.none))
             StartCoroutine(CaptureLayers());
         if (shutterIcon != null)
             GUI.DrawTexture(shutterRect, shutterIcon, ScaleMode.ScaleToFit, true);
 
         bool canRecycle = placement != null && placement.HasPlacedModel;
-        GUI.enabled = !isCapturing && !isSwitchingCamera && !RuntimeDebugPanel.IsOpen && canRecycle;
+        GUI.enabled = !isCapturing && !isSwitchingCamera && !RuntimeDebugPanel.IsOpen &&
+                      !IsManualLightCalibrationActive && canRecycle;
         if (GUI.Button(recycleRect, GUIContent.none, GUIStyle.none) && placement.RecyclePlacedModel())
             ShowStatus("洛天依已回收", 2.5f);
         GUI.enabled = true;
@@ -238,7 +617,8 @@ public sealed class CameraCaptureUI : MonoBehaviour
                 statusStyle);
         }
 
-        GUI.enabled = !isCapturing && !isSwitchingCamera && !RuntimeDebugPanel.IsOpen;
+        GUI.enabled = !isCapturing && !isSwitchingCamera && !RuntimeDebugPanel.IsOpen &&
+                      !IsManualLightCalibrationActive;
         if (GUI.Button(flipRect, GUIContent.none, GUIStyle.none))
             StartCoroutine(ToggleCameraFacing());
         if (flipIcon != null)
@@ -251,6 +631,7 @@ public sealed class CameraCaptureUI : MonoBehaviour
     {
         if (paused)
         {
+            harmonization?.InvalidateManualLight("应用暂停，AR Session 将重置");
             recycledForPause = placement != null && placement.RecycleForApplicationPause();
             resetSessionAfterResume = true;
             Debug.Log(
@@ -293,6 +674,7 @@ public sealed class CameraCaptureUI : MonoBehaviour
         CameraFacingDirection requested = previous == CameraFacingDirection.World
             ? CameraFacingDirection.User
             : CameraFacingDirection.World;
+        harmonization?.PrepareForCameraFacing(requested);
         cameraManager.requestedFacingDirection = requested;
         ShowStatus(requested == CameraFacingDirection.User ? "正在切换到前置相机…" : "正在切换到后置相机…", 3f);
 
@@ -302,6 +684,7 @@ public sealed class CameraCaptureUI : MonoBehaviour
 
         if (cameraManager.currentFacingDirection == requested)
         {
+            harmonization?.InvalidateManualLight("相机方向已切换");
             placement?.ResetForCameraChange();
             if (arSession != null)
                 arSession.Reset();
@@ -313,6 +696,7 @@ public sealed class CameraCaptureUI : MonoBehaviour
         }
         else
         {
+            harmonization?.PrepareForCameraFacing(previous);
             cameraManager.requestedFacingDirection = previous;
             ShowStatus("当前设备的 AR 模式不支持该相机", 3f);
             Debug.LogWarning($"[Camera] 无法切换相机: requested={requested}, current={cameraManager.currentFacingDirection}");
@@ -360,7 +744,7 @@ public sealed class CameraCaptureUI : MonoBehaviour
         Vector3 frozenPosition = arCamera.transform.position;
         Quaternion frozenRotation = arCamera.transform.rotation;
         Matrix4x4 frozenProjection = arCamera.projectionMatrix;
-        Renderer[] modelRenderers = placement.GetModelRenderersForCapture();
+        Renderer[] modelRenderers = GetCaptureRenderers();
         bool[] rendererStates = new bool[modelRenderers.Length];
         for (int i = 0; i < modelRenderers.Length; i++)
         {
@@ -435,6 +819,27 @@ public sealed class CameraCaptureUI : MonoBehaviour
         Debug.Log(
             $"[Capture] 完成: directory={captureDirectory}, size={cropWidth}x{cropHeight}, " +
             $"gallery={(published ? "saved" : "failed")}, facing={cameraManager.currentFacingDirection}");
+    }
+
+    private Renderer[] GetCaptureRenderers()
+    {
+        var unique = new HashSet<Renderer>();
+        foreach (var renderer in placement.GetModelRenderersForCapture())
+        {
+            if (renderer != null)
+                unique.Add(renderer);
+        }
+        if (harmonization != null)
+        {
+            foreach (var renderer in harmonization.GetAdditionalCaptureRenderers())
+            {
+                if (renderer != null)
+                    unique.Add(renderer);
+            }
+        }
+        var renderers = new Renderer[unique.Count];
+        unique.CopyTo(renderers);
+        return renderers;
     }
 
     private static Texture2D ReadCrop(
@@ -714,6 +1119,151 @@ public sealed class CameraCaptureUI : MonoBehaviour
         {
             fontSize = Mathf.Max(18, bodySize - 4)
         };
+        harmonizationStyle = new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.MiddleCenter,
+            fontSize = Mathf.Clamp(Mathf.RoundToInt(Screen.width / 16f * 1.30f), 68, 117),
+            fontStyle = FontStyle.Bold,
+            normal = { textColor = Color.white }
+        };
+        calibrationTitleStyle = new GUIStyle(titleStyle)
+        {
+            fontSize = Mathf.Max(28, titleSize - 2)
+        };
+        calibrationBodyStyle = new GUIStyle(statusStyle)
+        {
+            alignment = TextAnchor.MiddleLeft,
+            fontSize = Mathf.Max(20, bodySize - 2)
+        };
+        calibrationButtonStyle = new GUIStyle(GUI.skin.button)
+        {
+            alignment = TextAnchor.MiddleCenter,
+            fontSize = Mathf.Max(20, bodySize - 2),
+            fontStyle = FontStyle.Bold
+        };
+        manualLightParameterStyle = new GUIStyle(titleStyle)
+        {
+            alignment = TextAnchor.MiddleLeft,
+            fontStyle = FontStyle.Normal,
+            wordWrap = false,
+            clipping = TextClipping.Clip
+        };
+        manualLightButtonStyle = new GUIStyle(GUI.skin.button)
+        {
+            alignment = TextAnchor.MiddleCenter,
+            fontSize = titleSize,
+            fontStyle = FontStyle.Bold
+        };
+        manualLightSliderStyle = new GUIStyle(GUI.skin.horizontalSlider);
+        manualLightSliderThumbStyle = new GUIStyle(GUI.skin.horizontalSliderThumb);
+    }
+
+    private static float GetToolbarButtonSize(Rect topBar, float scale)
+    {
+        return Mathf.Clamp(topBar.height * 0.28f, 64f * scale, 92f * scale);
+    }
+
+    private static bool UsesAlternateShadowMask(string expressionName)
+    {
+        return expressionName is "共鸣" or "唱歌" or "放松" or "悲伤";
+    }
+
+    private static Texture2D CreateManualLightIcon(bool ready)
+    {
+        const int size = 96;
+        var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            name = ready ? "ManualLightReadyIcon" : "ManualLightAddIcon",
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        var pixels = new Color32[size * size];
+        Color32 transparent = new(255, 255, 255, 0);
+        Color32 solid = new(255, 255, 255, 255);
+        Color32 fill = new(255, 255, 255, 70);
+        for (int i = 0; i < pixels.Length; i++)
+            pixels[i] = transparent;
+
+        for (int y = 0; y < size; y++)
+        {
+            float ny = y / (float)(size - 1);
+            for (int x = 0; x < size; x++)
+            {
+                float nx = x / (float)(size - 1);
+                float dx = nx - 0.40f;
+                float dy = ny - 0.60f;
+                float distance = Mathf.Sqrt(dx * dx + dy * dy);
+                bool globeOutline = Mathf.Abs(distance - 0.22f) < 0.032f && ny >= 0.43f;
+                bool globeFill = ready && distance < 0.19f && ny >= 0.43f;
+                bool neck = nx >= 0.31f && nx <= 0.49f && ny >= 0.30f && ny <= 0.45f &&
+                            (nx <= 0.345f || nx >= 0.455f);
+                bool baseLine = nx >= 0.31f && nx <= 0.49f &&
+                                (Mathf.Abs(ny - 0.29f) < 0.025f || Mathf.Abs(ny - 0.23f) < 0.025f);
+
+                bool marker;
+                if (ready)
+                {
+                    float checkA = Mathf.Abs(ny - (0.67f - (nx - 0.64f) * 0.85f));
+                    float checkB = Mathf.Abs(ny - (0.58f + (nx - 0.70f) * 0.95f));
+                    marker = (nx >= 0.61f && nx <= 0.71f && checkA < 0.030f) ||
+                             (nx >= 0.69f && nx <= 0.85f && checkB < 0.030f);
+                }
+                else
+                {
+                    marker = (Mathf.Abs(nx - 0.75f) < 0.028f && ny >= 0.59f && ny <= 0.83f) ||
+                             (Mathf.Abs(ny - 0.71f) < 0.028f && nx >= 0.63f && nx <= 0.87f);
+                }
+
+                int index = y * size + x;
+                if (globeOutline || neck || baseLine || marker)
+                    pixels[index] = solid;
+                else if (globeFill)
+                    pixels[index] = fill;
+            }
+        }
+
+        texture.SetPixels32(pixels);
+        texture.Apply(false, true);
+        return texture;
+    }
+
+    private static Texture2D CreateExpressionIcon()
+    {
+        const int size = 96;
+        var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            name = "ExpressionCycleIcon",
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        var pixels = new Color32[size * size];
+        Color32 transparent = new(255, 255, 255, 0);
+        Color32 solid = new(255, 255, 255, 255);
+        for (int i = 0; i < pixels.Length; i++)
+            pixels[i] = transparent;
+
+        Vector2 center = new(size * 0.5f, size * 0.5f);
+        float faceRadius = size * 0.38f;
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float dx = x - center.x;
+                float dy = y - center.y;
+                float radius = Mathf.Sqrt(dx * dx + dy * dy);
+                bool face = Mathf.Abs(radius - faceRadius) <= 3.2f;
+                bool leftEye = (new Vector2(x, y) - new Vector2(size * 0.37f, size * 0.58f)).sqrMagnitude <= 4.5f * 4.5f;
+                bool rightEye = (new Vector2(x, y) - new Vector2(size * 0.63f, size * 0.58f)).sqrMagnitude <= 4.5f * 4.5f;
+                float smileY = size * 0.32f + Mathf.Abs(dx) * 0.23f;
+                bool smile = Mathf.Abs(y - smileY) <= 3.2f && Mathf.Abs(dx) <= size * 0.22f;
+                if (face || leftEye || rightEye || smile)
+                    pixels[y * size + x] = solid;
+            }
+        }
+
+        texture.SetPixels32(pixels);
+        texture.Apply(false, true);
+        return texture;
     }
 
     private void DrawSolid(Rect rect, Color color)
@@ -742,6 +1292,12 @@ public sealed class CameraCaptureUI : MonoBehaviour
             Destroy(pixel);
         if (lastThumbnail != null)
             Destroy(lastThumbnail);
+        if (expressionIcon != null)
+            Destroy(expressionIcon);
+        if (manualLightAddIcon != null)
+            Destroy(manualLightAddIcon);
+        if (manualLightReadyIcon != null)
+            Destroy(manualLightReadyIcon);
     }
 
     [Serializable]

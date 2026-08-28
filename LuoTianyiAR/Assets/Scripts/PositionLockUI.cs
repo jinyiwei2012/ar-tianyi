@@ -29,7 +29,7 @@ public sealed class PositionLockUI : MonoBehaviour
     {
         GUI.depth = -20;
         if (placement == null || !placement.IsModelReady || RuntimeDebugPanel.IsOpen ||
-            CaptureGalleryUI.IsOpen)
+            CaptureGalleryUI.IsOpen || CameraCaptureUI.IsManualLightEditing)
         {
             buttonRect = Rect.zero;
             return;

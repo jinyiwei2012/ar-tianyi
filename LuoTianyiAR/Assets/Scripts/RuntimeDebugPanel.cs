@@ -32,6 +32,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     private string copyStatus;
 
     private PlaceOnPlane placement;
+    private AutoHarmonizationController harmonization;
     private ARPlaneManager planeManager;
     private Camera unityCamera;
     private ARCameraManager cameraManager;
@@ -103,6 +104,8 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     {
         if (placement == null)
             placement = FindFirstObjectByType<PlaceOnPlane>(FindObjectsInactive.Include);
+        if (harmonization == null)
+            harmonization = FindFirstObjectByType<AutoHarmonizationController>(FindObjectsInactive.Include);
         if (planeManager == null)
             planeManager = FindFirstObjectByType<ARPlaneManager>(FindObjectsInactive.Include);
         var foundCameraManager = FindFirstObjectByType<ARCameraManager>(FindObjectsInactive.Include);
@@ -228,6 +231,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         cameraManager.enabled = false;
         yield return new WaitForSecondsRealtime(0.35f);
 
+        harmonization?.InvalidateManualLight("调试面板重启 AR 相机");
         if (arSession != null && arSession.enabled)
             arSession.Reset();
 
@@ -462,7 +466,8 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
             $"恢复状态: {cameraRecoveryState}  attempts={cameraRecoveryAttemptCount}\n" +
             $"AR: {ARSession.state} / {ARSession.notTrackingReason}  平面={planeCount}  模型={modelState}\n" +
             $"应用FPS={smoothedFps:F0}  图形API={SystemInfo.graphicsDeviceType}  管线={pipeline}\n" +
-            $"Render Features: {GetRendererFeatureSummary()}";
+            $"Render Features: {GetRendererFeatureSummary()}\n" +
+            $"自动融合: {(harmonization != null ? harmonization.GetCompactStatus() : "component-missing")}";
     }
 
     private string BuildCameraDiagnosis()
@@ -569,6 +574,9 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
             $"Camera recovery: state={cameraRecoveryState}, attempts={cameraRecoveryAttemptCount}, " +
             $"inProgress={cameraRecoveryInProgress}");
         report.AppendLine($"Occlusion: present={occlusionManager != null}, enabled={occlusionManager != null && occlusionManager.enabled}, requested={(occlusionManager != null ? occlusionManager.requestedEnvironmentDepthMode.ToString() : "missing")}, current={(occlusionManager != null ? occlusionManager.currentEnvironmentDepthMode.ToString() : "missing")}");
+        report.AppendLine();
+        report.AppendLine("--- 自动融合 ---");
+        report.AppendLine(harmonization != null ? harmonization.GetDebugSummary() : "AutoHarmonizationController component missing");
         report.AppendLine();
 
         report.AppendLine("--- 模型 ---");

@@ -197,6 +197,7 @@ GameObject:
   - component: {fileID: 1143887044}
   - component: {fileID: 1143887045}
   - component: {fileID: 1143887046}
+  - component: {fileID: 1143887047}
   m_Layer: 0
   m_Name: XR Origin
   m_TagString: Untagged
@@ -356,6 +357,34 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3357fb438b405df46b1a998a14475c85, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CaptureGalleryUI
+--- !u!114 &1143887047
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1143887032}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 352b80600eb3c1a45a282780b2d82472, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::AutoHarmonizationController
+  harmonizationEnabled: 1
+  correctionStrength: 0.72
+  responseSpeed: 5
+  minimumBrightness: 0.48
+  maximumBrightness: 1.35
+  manualKeyStrength: 0.36
+  manualAmbientInfluence: 0.45
+  manualMinimumBrightness: 0.82
+  shadowMaterial: {fileID: 2100000, guid: b01d7aef260333b498f1880ac92b27f8, type: 2}
+  primaryShadowMask: {fileID: 2800000, guid: f740fea610e5cba4299ce67c3483c26b, type: 3}
+  alternateShadowMask: {fileID: 2800000, guid: 360ac240a5b5dc7418110715ec926ae1, type: 3}
+  ambientShadowOpacity: 0.14
+  directionalShadowOpacity: 0.36
+  shadowSoftness: 0.72
+  shadowLengthScale: 0.55
+  shadowPlaneOffsetMeters: 0.003
 --- !u!1 &1376303130
 GameObject:
   m_ObjectHideFlags: 0
@@ -555,7 +584,7 @@ MonoBehaviour:
   m_LightEstimationMode: -1
   m_AutoFocus: 1
   m_ImageStabilization: 0
-  m_LightEstimation: 0
+  m_LightEstimation: 31
   m_FacingDirection: 1
   m_RenderMode: 2
 --- !u!81 &1376303137

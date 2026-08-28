@@ -83,7 +83,7 @@ public class PlacementGuideUI : MonoBehaviour
 
     private void OnGUI()
     {
-        if (CaptureGalleryUI.IsOpen)
+        if (CaptureGalleryUI.IsOpen || CameraCaptureUI.IsManualLightEditing)
             return;
 
         GUI.depth = 100;

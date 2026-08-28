@@ -37,6 +37,10 @@ public class PlaceOnPlane : MonoBehaviour
     private readonly List<ARRaycastHit> hits = new();
 
     private ARAnchor currentAnchor;
+    // 阴影必须贴在 AR 命中的真实平面上，不能使用会随相机俯仰的
+    // Live2D billboard 根节点 up。保存在 Anchor 局部空间后，即使
+    // ARCore 后续细化 Anchor 位姿，也能重建同一承载面的世界法线。
+    private Vector3 placementPlaneNormalInAnchorSpace = Vector3.up;
     private GameObject modelPoseRoot;
     private GameObject spawnedModel;
     private CylindricalBillboard billboard;
@@ -234,6 +238,15 @@ public class PlaceOnPlane : MonoBehaviour
 
         var newAnchor = anchorResult.value;
         var hitPose = hit.pose;
+        Vector3 hitPlaneNormal = hitPose.rotation * Vector3.up;
+        if (hitPlaneNormal.sqrMagnitude < 0.0001f)
+            hitPlaneNormal = Vector3.up;
+        else
+            hitPlaneNormal.Normalize();
+        if (Vector3.Dot(hitPlaneNormal, Vector3.up) < 0f)
+            hitPlaneNormal = -hitPlaneNormal;
+        placementPlaneNormalInAnchorSpace =
+            newAnchor.transform.InverseTransformDirection(hitPlaneNormal).normalized;
         var camera = Camera.main;
         lastHitPosition = hitPose.position;
         lastAnchorPositionAtCreation = newAnchor.transform.position;
@@ -641,6 +654,46 @@ public class PlaceOnPlane : MonoBehaviour
     public string CurrentExpressionName => live2DFeatures?.CurrentExpressionName ?? "无";
     public string Live2DFeatureStatus => live2DFeatures?.StatusSummary ?? "not_initialized";
 
+    public bool TryGetHarmonizationTarget(
+        out Transform poseRoot,
+        out Transform model,
+        out Vector3 footPosition,
+        out float heightMeters,
+        out Vector3 placementPlaneNormal)
+    {
+        poseRoot = modelPoseRoot != null ? modelPoseRoot.transform : null;
+        model = spawnedModel != null ? spawnedModel.transform : null;
+        footPosition = modelPoseRoot != null ? modelPoseRoot.transform.position : default;
+        heightMeters = targetHeightMeters;
+        placementPlaneNormal = currentAnchor != null
+            ? ResolvePlacementPlaneNormal(
+                currentAnchor.transform.rotation,
+                placementPlaneNormalInAnchorSpace)
+            : Vector3.up;
+        return modelReady && poseRoot != null && model != null;
+    }
+
+    public static Vector3 ResolvePlacementPlaneNormal(
+        Quaternion anchorRotation,
+        Vector3 normalInAnchorSpace)
+    {
+        if (normalInAnchorSpace.sqrMagnitude < 0.0001f)
+            return Vector3.up;
+
+        Vector3 worldNormal = anchorRotation * normalInAnchorSpace.normalized;
+        if (worldNormal.sqrMagnitude < 0.0001f)
+            return Vector3.up;
+        worldNormal.Normalize();
+        return Vector3.Dot(worldNormal, Vector3.up) < 0f ? -worldNormal : worldNormal;
+    }
+
+    public CubismRenderer[] GetCubismRenderersForHarmonization()
+    {
+        return spawnedModel != null
+            ? spawnedModel.GetComponentsInChildren<CubismRenderer>(true)
+            : System.Array.Empty<CubismRenderer>();
+    }
+
     public Renderer[] GetModelRenderersForCapture()
     {
         return spawnedModel != null
@@ -713,6 +766,7 @@ public class PlaceOnPlane : MonoBehaviour
             anchorManager.TryRemoveAnchor(currentAnchor);
 
         currentAnchor = null;
+        placementPlaneNormalInAnchorSpace = Vector3.up;
         modelPoseRoot = null;
         spawnedModel = null;
         billboard = null;
