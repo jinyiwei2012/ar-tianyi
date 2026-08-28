@@ -44,7 +44,8 @@ public static class AndroidBuild
         ValidateCubismRenderingConfiguration();
         ValidateBillboardFacingConvention();
         EnableARCoreLoader();
-        ARSceneSetup.ConfigureMarkerDiagnostics();
+        ARSceneSetup.ConfigureCameraExperience();
+        ValidateARCameraRenderingMode();
         AddSceneToBuild();
 
         var buildDir = Path.Combine(Directory.GetCurrentDirectory(), "Builds");
@@ -116,6 +117,11 @@ public static class AndroidBuild
         // 最低 API 25（Android 7.1，ARCore 插件对 6000.3 的要求；Vulkan 需 29）
         PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel25;
         PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevel34;
+        PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
+        PlayerSettings.allowedAutorotateToPortrait = false;
+        PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
+        PlayerSettings.allowedAutorotateToLandscapeLeft = false;
+        PlayerSettings.allowedAutorotateToLandscapeRight = false;
 
         // 图形 API：OpenGLES3（ARCore 最稳；默认 Vulkan 需提高 min API）
         PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.Android, false);
@@ -318,6 +324,21 @@ public static class AndroidBuild
             $"[AndroidBuild] Cubism 渲染校验通过: Renderer={rendererData.name}, " +
             $"ARBackground=active, CubismRenderPass=active, Materials={materials.Length}, " +
             $"RuntimeMeshes={runtimeMeshCount}/{cubismRendererCount}");
+    }
+
+    private static void ValidateARCameraRenderingMode()
+    {
+        var cameraManager = UnityEngine.Object.FindFirstObjectByType<ARCameraManager>(FindObjectsInactive.Include);
+        if (cameraManager == null)
+            throw new BuildFailedException("[AndroidBuild] 场景缺少 ARCameraManager");
+
+        if (cameraManager.requestedBackgroundRenderingMode != CameraBackgroundRenderingMode.AfterOpaques)
+        {
+            throw new BuildFailedException(
+                $"[AndroidBuild] AR 相机背景模式错误: {cameraManager.requestedBackgroundRenderingMode}，预期 AfterOpaques");
+        }
+
+        Debug.Log("[AndroidBuild] AR 相机背景模式校验通过: AfterOpaques");
     }
 
     private static void ValidateBillboardFacingConvention()

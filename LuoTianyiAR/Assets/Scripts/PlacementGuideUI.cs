@@ -15,7 +15,6 @@ public class PlacementGuideUI : MonoBehaviour
     private ARRaycastManager raycastManager;
     private ARPlaneManager planeManager;
     private PlaceOnPlane placement;
-    private ARMarkerDiagnostics markerDiagnostics;
     private readonly List<ARRaycastHit> centerHits = new();
 
     private Texture2D pixel;
@@ -36,7 +35,6 @@ public class PlacementGuideUI : MonoBehaviour
         raycastManager = GetComponent<ARRaycastManager>();
         planeManager = GetComponent<ARPlaneManager>();
         placement = GetComponent<PlaceOnPlane>();
-        markerDiagnostics = GetComponent<ARMarkerDiagnostics>();
 
         pixel = new Texture2D(1, 1, TextureFormat.RGBA32, false);
         pixel.name = "PlacementGuidePixel";
@@ -50,7 +48,10 @@ public class PlacementGuideUI : MonoBehaviour
         centerHits.Clear();
         if (ARSession.state == ARSessionState.SessionTracking && raycastManager != null)
         {
-            var center = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+            Rect viewfinder = CameraCaptureUI.GetViewfinderRect();
+            var center = new Vector2(
+                viewfinder.center.x,
+                Screen.height - viewfinder.center.y);
             canPlaceAtCenter = raycastManager.Raycast(
                 center, centerHits, TrackableType.PlaneWithinPolygon);
         }
@@ -82,42 +83,37 @@ public class PlacementGuideUI : MonoBehaviour
 
     private void OnGUI()
     {
+        if (CaptureGalleryUI.IsOpen)
+            return;
+
+        GUI.depth = 100;
         EnsureStyles();
-        var safe = Screen.safeArea;
-        float safeTop = Screen.height - safe.yMax;
-        float margin = Mathf.Max(18f, Screen.width * 0.035f);
-        float panelWidth = Mathf.Min(Screen.width - margin * 2f, 860f);
-        float panelX = (Screen.width - panelWidth) * 0.5f;
-
+        Rect viewfinder = CameraCaptureUI.GetViewfinderRect();
+        float margin = Mathf.Max(16f, Screen.width * 0.025f);
+        float panelWidth = Mathf.Min(viewfinder.width - margin * 2f, 900f);
+        float panelX = viewfinder.center.x - panelWidth * 0.5f;
         GetStatus(out string title, out string detail, out Color statusColor);
-        var topRect = new Rect(panelX, safeTop + margin, panelWidth, Mathf.Max(120f, Screen.height * 0.13f));
-        DrawPanel(topRect, new Color(0f, 0f, 0f, 0.62f));
-        DrawAccent(topRect, statusColor);
-        GUI.Label(new Rect(topRect.x + 24f, topRect.y + 12f, topRect.width - 48f, topRect.height * 0.43f), title, titleStyle);
-        GUI.Label(new Rect(topRect.x + 24f, topRect.y + topRect.height * 0.45f, topRect.width - 48f, topRect.height * 0.47f), detail, detailStyle);
-
-        DrawCenterReticle(canPlaceAtCenter ? ReadyColor : WaitingColor);
-        DrawTouchFeedback();
-
-        string hint;
-        if (placement != null && placement.IsModelReady)
-            hint = placement.IsPositionLocked
-                ? "位置已锁定  ·  点击或单指滑动引导视线"
-                : "单指拖动位置  ·  双指捏合调整大小  ·  调整后锁定";
-        else if (markerDiagnostics != null && !markerDiagnostics.IsMarkerTracked)
-            hint = "先将完整的 120mm 定位卡放在桌面并移入画面";
-        else
-            hint = "定位卡已锁定；将中心准星对准桌面，变绿后可点击放置模型";
         if (Time.unscaledTime < transientUntil && !string.IsNullOrEmpty(transientMessage))
-            hint = transientMessage;
+            detail = transientMessage;
 
-        float bottomY = Screen.height - safe.yMin - Mathf.Max(100f, Screen.height * 0.10f) - margin;
-        var bottomRect = new Rect(panelX, bottomY, panelWidth, Mathf.Max(100f, Screen.height * 0.10f));
-        var bottomColor = Time.unscaledTime < transientUntil && transientIsFailure
-            ? new Color(0.45f, 0.04f, 0.04f, 0.82f)
-            : new Color(0f, 0f, 0f, 0.62f);
-        DrawPanel(bottomRect, bottomColor);
-        GUI.Label(new Rect(bottomRect.x + 22f, bottomRect.y + 10f, bottomRect.width - 44f, bottomRect.height - 20f), hint, hintStyle);
+        float promptHeight = Mathf.Clamp(Screen.height * 0.085f, 118f, 210f);
+        var promptRect = new Rect(panelX, viewfinder.y + margin, panelWidth, promptHeight);
+        DrawPanel(promptRect, transientIsFailure && Time.unscaledTime < transientUntil
+            ? new Color(0.42f, 0.03f, 0.03f, 0.74f)
+            : new Color(0f, 0f, 0f, 0.58f));
+        DrawAccent(promptRect, statusColor);
+        GUI.Label(
+            new Rect(promptRect.x + 22f, promptRect.y + 8f, promptRect.width - 44f, promptRect.height * 0.44f),
+            title,
+            titleStyle);
+        GUI.Label(
+            new Rect(promptRect.x + 22f, promptRect.y + promptRect.height * 0.43f, promptRect.width - 44f, promptRect.height * 0.51f),
+            detail,
+            detailStyle);
+
+        if (placement == null || !placement.IsModelReady)
+            DrawCenterReticle(viewfinder, canPlaceAtCenter ? ReadyColor : WaitingColor);
+        DrawTouchFeedback();
     }
 
     private void GetStatus(out string title, out string detail, out Color color)
@@ -150,35 +146,6 @@ public class PlacementGuideUI : MonoBehaviour
                 return;
         }
 
-        if ((placement == null || !placement.HasPlacedModel) && markerDiagnostics != null)
-        {
-            if (!markerDiagnostics.IsMarkerTracked)
-            {
-                title = markerDiagnostics.HasEverDetectedMarker ? "二维码定位卡追踪丢失" : "寻找二维码定位卡";
-                detail = "请对准整张 120mm 定位卡，确保边框、TOP 箭头和二维码都在画面内。";
-                color = WaitingColor;
-                return;
-            }
-
-            if (!markerDiagnostics.HasPlaneComparison)
-            {
-                title = "二维码定位卡已锁定";
-                detail = "图像空间位姿已建立，但卡片中心还没有匹配到水平面；请缓慢左右扫描桌面。";
-                color = WaitingColor;
-                return;
-            }
-
-            title = markerDiagnostics.PlaneComparisonPasses
-                ? "二维码与水平面一致"
-                : "二维码与水平面不一致";
-            detail =
-                $"高度误差 {markerDiagnostics.HeightErrorCentimeters:F1}cm，" +
-                $"法向误差 {markerDiagnostics.NormalErrorDegrees:F1}°，" +
-                $"平面内偏移 {markerDiagnostics.LateralErrorCentimeters:F1}cm；点击会将模型放到定位卡中心。";
-            color = markerDiagnostics.PlaneComparisonPasses ? ReadyColor : FailureColor;
-            return;
-        }
-
         if (planeCount == 0)
         {
             title = "正在寻找水平平面";
@@ -189,8 +156,8 @@ public class PlacementGuideUI : MonoBehaviour
         {
             title = $"已识别 {planeCount} 个平面";
             detail = canPlaceAtCenter
-                ? "准星已变绿：点击屏幕确认，洛天依会出现在准星位置。"
-                : "移动手机，将中心准星对准已识别的地面或桌面。";
+                ? "准星已变绿：点击取景框，将洛天依放到准星所在平面。"
+                : "缓慢移动手机，将中心准星对准桌面或地面。";
             color = canPlaceAtCenter ? ReadyColor : WaitingColor;
         }
         else if (placement.IsModelLoading)
@@ -209,8 +176,8 @@ public class PlacementGuideUI : MonoBehaviour
         {
             title = placement.IsPositionLocked ? "洛天依位置已锁定" : "洛天依已放置";
             detail = placement.IsPositionLocked
-                ? "位置和大小保持不变；点击或滑动屏幕可以引导她的视线。"
-                : "可以绕她走动，也可以继续拖动位置或双指调整大小。";
+                ? "点击或滑动取景框可以引导视线；现在可以拍照。"
+                : "单指拖动位置、双指调整大小；完成后点击右下角锁定。";
             color = ReadyColor;
         }
     }
@@ -228,10 +195,14 @@ public class PlacementGuideUI : MonoBehaviour
         };
     }
 
-    private void DrawCenterReticle(Color color)
+    private void DrawCenterReticle(Rect viewfinder, Color color)
     {
         float size = Mathf.Clamp(Screen.width * 0.06f, 54f, 92f);
-        var rect = new Rect((Screen.width - size) * 0.5f, (Screen.height - size) * 0.5f, size, size);
+        var rect = new Rect(
+            viewfinder.center.x - size * 0.5f,
+            viewfinder.center.y - size * 0.5f,
+            size,
+            size);
         DrawOutline(rect, color, 4f);
         DrawSolid(new Rect(rect.center.x - 2f, rect.y - 10f, 4f, 20f), color);
         DrawSolid(new Rect(rect.center.x - 2f, rect.yMax - 10f, 4f, 20f), color);

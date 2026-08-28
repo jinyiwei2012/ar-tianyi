@@ -34,7 +34,6 @@ public class PlaceOnPlane : MonoBehaviour
     private ARPlaneManager planeManager;
     private ARAnchorManager anchorManager;
     private PlacementGuideUI guideUI;
-    private ARMarkerDiagnostics markerDiagnostics;
     private readonly List<ARRaycastHit> hits = new();
 
     private ARAnchor currentAnchor;
@@ -68,14 +67,15 @@ public class PlaceOnPlane : MonoBehaviour
     private int placementRequestVersion;
     private Vector3 manualWorldOffset;
     private bool positionLocked;
+    private float initialTargetHeightMeters;
 
     private void Awake()
     {
+        initialTargetHeightMeters = targetHeightMeters;
         raycastManager = GetComponent<ARRaycastManager>();
         planeManager = GetComponent<ARPlaneManager>();
         anchorManager = GetComponent<ARAnchorManager>();
         guideUI = GetComponent<PlacementGuideUI>();
-        markerDiagnostics = GetComponent<ARMarkerDiagnostics>();
     }
 
     private void OnEnable()
@@ -113,7 +113,9 @@ public class PlaceOnPlane : MonoBehaviour
         if (RuntimeDebugPanel.IsPointerOverDebugUI(finger.screenPosition) ||
             ModelNudgeUI.IsPointerOverNudgeUI(finger.screenPosition) ||
             ExpressionCycleUI.IsPointerOverExpressionUI(finger.screenPosition) ||
-            PositionLockUI.IsPointerOverLockUI(finger.screenPosition))
+            PositionLockUI.IsPointerOverLockUI(finger.screenPosition) ||
+            CameraCaptureUI.IsPointerOverCameraUI(finger.screenPosition) ||
+            !CameraCaptureUI.IsWithinViewfinder(finger.screenPosition))
             return;
 
         if (Touch.activeTouches.Count > 1)
@@ -141,6 +143,9 @@ public class PlaceOnPlane : MonoBehaviour
     private void OnFingerMove(Finger finger)
     {
         if (RuntimeDebugPanel.IsOpen)
+            return;
+
+        if (!CameraCaptureUI.IsWithinViewfinder(finger.screenPosition))
             return;
 
         if (finger.index != placementFingerIndex || Touch.activeTouches.Count != 1)
@@ -359,7 +364,7 @@ public class PlaceOnPlane : MonoBehaviour
     private void UpdatePinchScale()
     {
         if (RuntimeDebugPanel.IsOpen || positionLocked || spawnedModel == null ||
-            !modelReady || Touch.activeTouches.Count < 2)
+            !modelReady || Touch.activeTouches.Count != 2)
         {
             pinchStartDistance = 0f;
             return;
@@ -367,6 +372,13 @@ public class PlaceOnPlane : MonoBehaviour
 
         var first = Touch.activeTouches[0].screenPosition;
         var second = Touch.activeTouches[1].screenPosition;
+        if (!CameraCaptureUI.IsWithinViewfinder(first) ||
+            !CameraCaptureUI.IsWithinViewfinder(second))
+        {
+            pinchStartDistance = 0f;
+            return;
+        }
+
         float distance = Vector2.Distance(first, second);
         if (pinchStartDistance <= 0f)
         {
@@ -383,34 +395,6 @@ public class PlaceOnPlane : MonoBehaviour
             maximumHeightMeters);
         spawnedModel.transform.localScale = scalePerMeter * targetHeightMeters;
         PlaceFeetOnAnchor();
-    }
-
-    private void SpawnDiagnosticMarker(Vector3 worldPosition)
-    {
-        // 独立于 Live2D 的高可见基准：小球标记命中点 + 从地面向上 10cm 短线。
-        // 使用普通 URP primitive，避免 Cubism 渲染路径干扰；禁用 Collider 以免影响 raycast。
-        foreach (var marker in diagnosticMarkers)
-        {
-            if (marker != null)
-                Destroy(marker);
-        }
-        diagnosticMarkers.Clear();
-
-        var ball = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        ball.name = "Placement Diagnostic Ball";
-        ball.transform.position = worldPosition;
-        ball.transform.localScale = Vector3.one * 0.025f;
-        if (ball.TryGetComponent<Collider>(out var ballCollider))
-            ballCollider.enabled = false;
-        diagnosticMarkers.Add(ball);
-
-        var stick = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        stick.name = "Placement Diagnostic Stick";
-        stick.transform.position = worldPosition + Vector3.up * 0.05f;
-        stick.transform.localScale = new Vector3(0.004f, 0.1f, 0.004f);
-        if (stick.TryGetComponent<Collider>(out var stickCollider))
-            stickCollider.enabled = false;
-        diagnosticMarkers.Add(stick);
     }
 
     private void PlaceFeetOnAnchor()
@@ -494,21 +478,10 @@ public class PlaceOnPlane : MonoBehaviour
 
     private Vector2 GetInitialPlacementScreenPosition()
     {
-        var camera = Camera.main;
-        if (camera == null || markerDiagnostics == null ||
-            !markerDiagnostics.TryGetTrackedMarkerPose(out var markerPose))
-            return GetScreenCenter();
-
-        Vector3 screen = camera.WorldToScreenPoint(markerPose.position);
-        if (screen.z <= 0f || screen.x < 0f || screen.x > Screen.width ||
-            screen.y < 0f || screen.y > Screen.height)
-            return GetScreenCenter();
-
-        var markerScreenPosition = new Vector2(screen.x, screen.y);
-        Debug.Log(
-            $"[PlaceOnPlane] 定位卡正在追踪，首次放置目标改为二维码中心: " +
-            $"world={markerPose.position:F3}, screen={markerScreenPosition:F1}");
-        return markerScreenPosition;
+        Rect viewfinder = CameraCaptureUI.GetViewfinderRect();
+        return new Vector2(
+            viewfinder.center.x,
+            Screen.height - viewfinder.center.y);
     }
 
     private float CalculateAdaptiveInitialHeight(float requestedHeight, float modelAspect)
@@ -668,6 +641,114 @@ public class PlaceOnPlane : MonoBehaviour
     public string CurrentExpressionName => live2DFeatures?.CurrentExpressionName ?? "无";
     public string Live2DFeatureStatus => live2DFeatures?.StatusSummary ?? "not_initialized";
 
+    public Renderer[] GetModelRenderersForCapture()
+    {
+        return spawnedModel != null
+            ? spawnedModel.GetComponentsInChildren<Renderer>(true)
+            : System.Array.Empty<Renderer>();
+    }
+
+    public void ResetForCameraChange()
+    {
+        ResetPlacementState(
+            "相机已切换，请重新扫描平面并放置洛天依。",
+            "[Interaction] 相机切换：已清除模型和锚点，等待重新识别平面");
+    }
+
+    public bool RecyclePlacedModel()
+    {
+        bool hadPlacement = HasPlacementState();
+        if (!hadPlacement)
+            return false;
+
+        ResetPlacementState(
+            "洛天依已回收。点击取景框可重新放置。",
+            "[Interaction] 用户回收洛天依：已清除模型和锚点，保留当前平面追踪");
+        return true;
+    }
+
+    public bool RecycleForApplicationPause()
+    {
+        bool hadPlacement = HasPlacementState();
+        ResetPlacementState(
+            "应用已进入后台，洛天依已自动回收。",
+            $"[Lifecycle] 应用进入后台：placementBeforePause={hadPlacement}，已清除模型和锚点");
+        return hadPlacement;
+    }
+
+    private bool HasPlacementState()
+    {
+        return spawnedModel != null || modelPoseRoot != null || currentAnchor != null ||
+               anchorCreationPending;
+    }
+
+    private void ResetPlacementState(string guideMessage, string logMessage)
+    {
+        // 让任何仍在等待 TryAddAnchorAsync 的旧请求失效，避免切镜头后异步回调
+        // 又把旧相机对应的 Anchor/模型放回场景。
+        placementRequestVersion++;
+        anchorCreationPending = false;
+
+        if (modelInitialization != null)
+        {
+            StopCoroutine(modelInitialization);
+            modelInitialization = null;
+        }
+
+        live2DFeatures?.CancelUserFocus();
+
+        // Pose Root 通常是 Anchor 的子对象。先解除父子关系再销毁，避免
+        // TryRemoveAnchor 与 Destroy 在同一帧重复处理同一棵对象树。
+        if (modelPoseRoot != null)
+        {
+            modelPoseRoot.transform.SetParent(null, true);
+            Destroy(modelPoseRoot);
+        }
+        else if (spawnedModel != null)
+        {
+            Destroy(spawnedModel);
+        }
+
+        if (currentAnchor != null)
+            anchorManager.TryRemoveAnchor(currentAnchor);
+
+        currentAnchor = null;
+        modelPoseRoot = null;
+        spawnedModel = null;
+        billboard = null;
+        live2DFeatures = null;
+        scalePerMeter = Vector3.zero;
+        modelReady = false;
+        modelLoadFailure = null;
+        positionLocked = false;
+        placementFingerIndex = -1;
+        placementFingerDragging = false;
+        pinchStartDistance = 0f;
+        pinchStartHeight = 0f;
+        manualWorldOffset = Vector3.zero;
+        targetHeightMeters = initialTargetHeightMeters;
+
+        lastRequestedScreenPosition = default;
+        lastProjectedHitPosition = default;
+        lastProjectionErrorPixels = float.NaN;
+        lastFootCenter = default;
+        lastFootAlignmentErrorMeters = float.NaN;
+        lastFootAlignmentSource = "unavailable";
+        lastCameraPositionAtPlacement = default;
+        lastHitPosition = default;
+        lastAnchorPositionAtCreation = default;
+        lastCameraToHitMeters = float.NaN;
+        lastAnchorToHitMeters = float.NaN;
+        lastInitialViewportCoverage = default;
+        lastRequestedInitialHeightMeters = float.NaN;
+
+        guideUI?.ReportPlacement(
+            GetInitialPlacementScreenPosition(),
+            true,
+            guideMessage);
+        Debug.Log(logMessage);
+    }
+
     public bool SetPositionLocked(bool locked)
     {
         if (!modelReady || modelPoseRoot == null)
@@ -724,12 +805,11 @@ public class PlaceOnPlane : MonoBehaviour
 
     private string GetMarkerAlignmentSummary()
     {
-        if (markerDiagnostics == null || modelPoseRoot == null ||
-            !markerDiagnostics.TryGetTrackedMarkerPose(out var markerPose))
-            return "markerDelta=unavailable";
+        if (modelPoseRoot == null || !float.IsFinite(lastHitPosition.sqrMagnitude))
+            return "placementDelta=unavailable";
 
-        Vector3 delta = modelPoseRoot.transform.position - markerPose.position;
-        return $"markerDelta={delta:F3}/{delta.magnitude * 100f:F2}cm";
+        Vector3 delta = modelPoseRoot.transform.position - lastHitPosition;
+        return $"placementDelta={delta:F3}/{delta.magnitude * 100f:F2}cm";
     }
 
     public string GetDebugSnapshot()
@@ -765,12 +845,6 @@ public class PlaceOnPlane : MonoBehaviour
         string boundsText = hasBounds
             ? $"center={bounds.center:F3}, size={bounds.size:F3}"
             : "invalid";
-        string placementText = hasPlacementSample
-            ? $"requestScreen={lastRequestScreenPoint:F1}, hitWorld={lastHitPosition:F3}, hitScreen={lastHitScreen:F1}, screenErrorPx={lastScreenErrorPx:F1}"
-            : "requestScreen=none";
-        string alignText = hasPlacementSample && placementRoot != null
-            ? $"root={placementRoot.transform.position:F3}, footCenter={lastFootCenter:F3}, anchor={lastAnchorPosition:F3}, alignErr={lastAlignmentError.magnitude * 1000f:F1}mm"
-            : "align=none";
         string anchorState = currentAnchor != null ? currentAnchor.trackingState.ToString() : "missing";
         string state = modelReady ? "ready" : IsModelLoading ? "loading" : "failed";
         string facingText = billboard != null && float.IsFinite(billboard.FrontFacingDot)
@@ -795,10 +869,8 @@ public class PlaceOnPlane : MonoBehaviour
         string initialSizingText = float.IsFinite(lastRequestedInitialHeightMeters)
             ? $"requested={lastRequestedInitialHeightMeters:F3}m, adapted={targetHeightMeters:F3}m, viewport={lastInitialViewportCoverage.x * 100f:F1}%x{lastInitialViewportCoverage.y * 100f:F1}%"
             : "unavailable";
-        string markerAlignmentText = markerDiagnostics != null &&
-                                     markerDiagnostics.TryGetTrackedMarkerPose(out var liveMarkerPose) &&
-                                     modelPoseRoot != null
-            ? $"marker={liveMarkerPose.position:F3}, root={modelPoseRoot.transform.position:F3}, delta={Vector3.Distance(liveMarkerPose.position, modelPoseRoot.transform.position) * 100f:F2}cm"
+        string placementDeltaText = modelPoseRoot != null && float.IsFinite(lastHitPosition.sqrMagnitude)
+            ? $"hit={lastHitPosition:F3}, root={modelPoseRoot.transform.position:F3}, delta={Vector3.Distance(lastHitPosition, modelPoseRoot.transform.position) * 100f:F2}cm"
             : "unavailable";
 
         return
@@ -810,7 +882,7 @@ public class PlaceOnPlane : MonoBehaviour
             $"spatial={spatialText}\n" +
             $"liveSpatial={liveSpatialText}\n" +
             $"initialSizing={initialSizingText}\n" +
-            $"markerAlignment={markerAlignmentText}\n" +
+            $"placementDelta={placementDeltaText}\n" +
             $"manualWorldOffset={manualWorldOffset:F3}/{manualWorldOffset.magnitude * 100f:F2}cm\n" +
             $"visualLocalPosition={spawnedModel.transform.localPosition:F3}, localScale={spawnedModel.transform.localScale:F5}\n" +
             $"alignment={alignmentText}\n" +
