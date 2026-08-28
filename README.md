@@ -67,8 +67,9 @@ $env:ANDROID_NDK_ROOT  = "$android\NDK"
 ## 当前状态（2026-08-27）
 
 - ✅ P0 平面链路已在真机跑通：模型显示、相机读取、放置 UI、平面识别、Anchor
+- ✅ Phase 2 移动代码已实现：点击走路 + 状态机 + 程序化动画（呼吸/眨眼/走路律动），待真机验证
 - 🔧 进行中："模型不在准星位置"的偏移诊断（见 `HANDOFF_AR_PLACEMENT.md`）——已实现中心准星模式、拖动阈值、Placement Root、footCenter 完整 XYZ 对齐，待真机复测
-- ⏳ 未开始：移动（Phase 2 主线）、遮挡真机验收（Phase 3）
+- 🔧 进行中：Phase 3 遮挡（`feat/phase3-occlusion` 分支）——遮挡诊断 + 参照立方体 + 深度模式监控已实现，待真机验证
 
 ## 分支说明
 

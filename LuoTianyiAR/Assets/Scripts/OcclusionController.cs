@@ -13,6 +13,22 @@ public class OcclusionController : MonoBehaviour
     [SerializeField] private bool forceDisable = false;
 
     private AROcclusionManager occlusionManager;
+    private EnvironmentDepthMode lastObservedMode = EnvironmentDepthMode.Disabled;
+
+    private void Update()
+    {
+        // 持续监控实际 depth 模式：设备中途丢失/恢复能力时输出一次日志，便于真机诊断。
+        if (occlusionManager == null || !occlusionManager.enabled)
+            return;
+
+        var current = occlusionManager.currentEnvironmentDepthMode;
+        if (current != lastObservedMode)
+        {
+            lastObservedMode = current;
+            Debug.Log($"[Occlusion] 深度模式变化: {lastObservedMode} → {current} " +
+                      $"(supported={occlusionManager.descriptor?.environmentDepthImageSupported})");
+        }
+    }
 
     /// <summary>当前遮挡是否实际启用（组件启用且 depth 模式非 Disabled）。</summary>
     public bool IsOcclusionEnabled
