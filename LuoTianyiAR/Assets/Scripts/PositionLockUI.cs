@@ -6,11 +6,14 @@ public sealed class PositionLockUI : MonoBehaviour
 {
     private static Rect buttonRect;
     private PlaceOnPlane placement;
-    private GUIStyle buttonStyle;
+    private Texture2D lockOpenIcon;
+    private Texture2D lockClosedIcon;
 
     private void Awake()
     {
         placement = GetComponent<PlaceOnPlane>();
+        lockOpenIcon = Resources.Load<Texture2D>("UI/lock-open");
+        lockClosedIcon = Resources.Load<Texture2D>("UI/lock-closed");
     }
 
     public static bool IsPointerOverLockUI(Vector2 screenPosition)
@@ -24,48 +27,46 @@ public sealed class PositionLockUI : MonoBehaviour
 
     private void OnGUI()
     {
-        if (placement == null || !placement.IsModelReady || RuntimeDebugPanel.IsOpen)
+        GUI.depth = -20;
+        if (placement == null || !placement.IsModelReady || RuntimeDebugPanel.IsOpen ||
+            CaptureGalleryUI.IsOpen || CameraCaptureUI.IsManualLightEditing)
         {
             buttonRect = Rect.zero;
             return;
         }
 
-        EnsureStyle();
-        var safe = Screen.safeArea;
+        Rect viewfinder = CameraCaptureUI.GetViewfinderRect();
         float scale = Mathf.Clamp(Screen.width / 1260f, 0.8f, 1.45f);
-        float width = Mathf.Clamp(Screen.width * 0.34f, 360f, 520f);
-        float height = 74f * scale;
-        float safeBottom = Screen.height - safe.yMin;
-        float bottomGuideHeight = Mathf.Max(100f, Screen.height * 0.10f);
-        float margin = Mathf.Max(18f, Screen.width * 0.035f);
+        float touchSize = 126f * scale;
+        float iconSize = 92f * scale;
+        float margin = Mathf.Max(18f, Screen.width * 0.025f);
         buttonRect = new Rect(
-            (Screen.width - width) * 0.5f,
-            safeBottom - bottomGuideHeight - margin - height - 16f * scale,
-            width,
-            height);
+            viewfinder.xMax - touchSize - margin,
+            viewfinder.yMax - touchSize - margin,
+            touchSize,
+            touchSize);
 
-        var previousColor = GUI.backgroundColor;
-        GUI.backgroundColor = placement.IsPositionLocked
-            ? new Color(0.16f, 0.78f, 0.46f, 1f)
-            : new Color(0.95f, 0.66f, 0.14f, 1f);
-        string label = placement.IsPositionLocked
-            ? "已锁定 · 点击解锁"
-            : "锁定位置";
-        if (GUI.Button(buttonRect, label, buttonStyle))
+        if (GUI.Button(buttonRect, GUIContent.none, GUIStyle.none))
             placement.SetPositionLocked(!placement.IsPositionLocked);
-        GUI.backgroundColor = previousColor;
-    }
 
-    private void EnsureStyle()
-    {
-        if (buttonStyle != null)
-            return;
-
-        int bodySize = Mathf.Clamp(Screen.width / 48, 22, 36);
-        buttonStyle = new GUIStyle(GUI.skin.button)
+        Rect iconRect = new(
+            buttonRect.center.x - iconSize * 0.5f,
+            buttonRect.center.y - iconSize * 0.5f,
+            iconSize,
+            iconSize);
+        Texture2D icon = placement.IsPositionLocked ? lockClosedIcon : lockOpenIcon;
+        if (icon != null)
         {
-            fontSize = bodySize,
-            fontStyle = FontStyle.Bold
-        };
+            Color previous = GUI.color;
+            GUI.color = new Color(0f, 0f, 0f, 0.48f);
+            GUI.DrawTexture(new Rect(iconRect.x + 4f * scale, iconRect.y + 4f * scale, iconRect.width, iconRect.height),
+                icon, ScaleMode.ScaleToFit, true);
+            GUI.color = placement.IsPositionLocked
+                ? new Color(1f, 0.78f, 0.08f, 1f)
+                : Color.white;
+            GUI.DrawTexture(iconRect, icon, ScaleMode.ScaleToFit, true);
+            GUI.color = previous;
+        }
+
     }
 }

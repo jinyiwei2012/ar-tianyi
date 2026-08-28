@@ -4,6 +4,7 @@ using System;
 using System.IO;
 using System.Linq;
 using Live2D.Cubism.Rendering;
+using Live2D.Cubism.Rendering.URP;
 using UnityEditor;
 using UnityEditor.Android;
 using UnityEditor.Build;
@@ -44,7 +45,8 @@ public static class AndroidBuild
         ValidateCubismRenderingConfiguration();
         ValidateBillboardFacingConvention();
         EnableARCoreLoader();
-        ARSceneSetup.ConfigureMarkerDiagnostics();
+        ARSceneSetup.ConfigureCameraExperience();
+        ValidateARCameraRenderingMode();
         AddSceneToBuild();
 
         var buildDir = Path.Combine(Directory.GetCurrentDirectory(), "Builds");
@@ -116,6 +118,11 @@ public static class AndroidBuild
         // 最低 API 25（Android 7.1，ARCore 插件对 6000.3 的要求；Vulkan 需 29）
         PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel25;
         PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevel34;
+        PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
+        PlayerSettings.allowedAutorotateToPortrait = false;
+        PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
+        PlayerSettings.allowedAutorotateToLandscapeLeft = false;
+        PlayerSettings.allowedAutorotateToLandscapeRight = false;
 
         // 图形 API：OpenGLES3（ARCore 最稳；默认 Vulkan 需提高 min API）
         PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.Android, false);
@@ -267,6 +274,8 @@ public static class AndroidBuild
 
         if (!hasActiveCubismPass)
             throw new BuildFailedException("[AndroidBuild] 默认 URP Renderer 未启用 CubismRenderPassFeature");
+        if (CubismRenderPassFeature.ProjectInjectionPoint != RenderPassEvent.AfterRenderingTransparents)
+            throw new BuildFailedException("[AndroidBuild] Cubism 必须在透明地面阴影之后渲染");
         if (!hasActiveARBackgroundPass)
             throw new BuildFailedException("[AndroidBuild] 默认 URP Renderer 未启用 ARBackgroundRendererFeature");
 
@@ -318,6 +327,85 @@ public static class AndroidBuild
             $"[AndroidBuild] Cubism 渲染校验通过: Renderer={rendererData.name}, " +
             $"ARBackground=active, CubismRenderPass=active, Materials={materials.Length}, " +
             $"RuntimeMeshes={runtimeMeshCount}/{cubismRendererCount}");
+    }
+
+    private static void ValidateARCameraRenderingMode()
+    {
+        var cameraManager = UnityEngine.Object.FindFirstObjectByType<ARCameraManager>(FindObjectsInactive.Include);
+        if (cameraManager == null)
+            throw new BuildFailedException("[AndroidBuild] 场景缺少 ARCameraManager");
+
+        if (cameraManager.requestedBackgroundRenderingMode != CameraBackgroundRenderingMode.AfterOpaques)
+        {
+            throw new BuildFailedException(
+                $"[AndroidBuild] AR 相机背景模式错误: {cameraManager.requestedBackgroundRenderingMode}，预期 AfterOpaques");
+        }
+
+        LightEstimation requestedLight = cameraManager.requestedLightEstimation;
+        if ((requestedLight & AutoHarmonizationController.WorldLightEstimation) !=
+            AutoHarmonizationController.WorldLightEstimation)
+        {
+            throw new BuildFailedException(
+                $"[AndroidBuild] AR 光照估计配置不完整: {requestedLight}，" +
+                $"预期 {AutoHarmonizationController.WorldLightEstimation}");
+        }
+
+        var harmonization = UnityEngine.Object.FindFirstObjectByType<AutoHarmonizationController>(
+            FindObjectsInactive.Include);
+        if (harmonization == null || !harmonization.IsHarmonizationEnabled ||
+            !harmonization.HasConfiguredShadowMaterial || !harmonization.HasConfiguredShadowMasks)
+        {
+            throw new BuildFailedException(
+                "[AndroidBuild] 自动融合组件缺失、默认未开启或两张影子轮廓未配置");
+        }
+
+        float frontLit = AutoHarmonizationController.ComputePaperDiffuse(Vector3.back, Vector3.forward);
+        float backLit = AutoHarmonizationController.ComputePaperDiffuse(Vector3.back, Vector3.back);
+        float manualFrontLit = AutoHarmonizationController.ComputeManualPaperDiffuse(
+            Vector3.back,
+            Vector3.back);
+        Vector3 manualShadow = AutoHarmonizationController.ComputeManualShadowDirection(
+            new Vector3(1f, 1f, 0f),
+            Vector3.up);
+        Quaternion anchorRotation = Quaternion.Euler(0f, 37f, 0f);
+        Vector3 trackedPlaneNormal = PlaceOnPlane.ResolvePlacementPlaneNormal(
+            anchorRotation,
+            Quaternion.Inverse(anchorRotation) * Vector3.up);
+        Vector3 tiltedBillboardUp = Quaternion.Euler(34f, 37f, 0f) * Vector3.up;
+        float sampleElevation = 23f;
+        Vector3 sampleLightRay = new(
+            Mathf.Cos(sampleElevation * Mathf.Deg2Rad),
+            -Mathf.Sin(sampleElevation * Mathf.Deg2Rad),
+            0f);
+        float resolvedElevation = AutoHarmonizationController.ComputeShadowLightElevationDegrees(
+            sampleLightRay,
+            Vector3.up);
+        float shortenedShadow = AutoHarmonizationController.ComputeShadowLengthMeters(
+            0.10f,
+            sampleLightRay,
+            Vector3.up,
+            0.55f);
+        if (frontLit < 0.9999f || backLit > 0.0001f || manualFrontLit < 0.9999f ||
+            Vector3.Dot(manualShadow, Vector3.left) < 0.9999f ||
+            Vector3.Dot(trackedPlaneNormal, Vector3.up) < 0.9999f ||
+            Vector3.Angle(trackedPlaneNormal, tiltedBillboardUp) < 20f ||
+            Mathf.Abs(resolvedElevation - sampleElevation) > 0.01f ||
+            shortenedShadow < 0.06f || shortenedShadow > 0.07f)
+        {
+            throw new BuildFailedException(
+                $"[AndroidBuild] 纸片/人工主光方向约定错误: frontLit={frontLit:F5}, " +
+                $"backLit={backLit:F5}, manualFrontLit={manualFrontLit:F5}, " +
+                $"manualShadow={manualShadow:F5}, trackedPlaneNormal={trackedPlaneNormal:F5}, " +
+                $"billboardUp={tiltedBillboardUp:F5}, elevation={resolvedElevation:F2}, " +
+                $"shortenedShadow={shortenedShadow:F3}m");
+        }
+
+        Debug.Log(
+            $"[AndroidBuild] AR 相机/自动融合校验通过: background=AfterOpaques, " +
+            $"light={requestedLight}, H=ON, frontLit={frontLit:F5}, backLit={backLit:F5}, " +
+            $"manualFrontLit={manualFrontLit:F5}, manualShadow={manualShadow:F3}, " +
+            $"trackedPlaneNormal={trackedPlaneNormal:F3}, sampleElevation={resolvedElevation:F1}deg, " +
+            $"shortenedShadow={shortenedShadow:F3}m");
     }
 
     private static void ValidateBillboardFacingConvention()

@@ -82,6 +82,10 @@ namespace Live2D.Cubism.Rendering.URP
     /// </summary>
     public class CubismRenderPassFeature : ScriptableRendererFeature
     {
+        // 项目中的地面软阴影由标准透明队列绘制。Cubism 必须随后提交，
+        // 否则不写深度的 Live2D 会先画、阴影再覆盖到角色脚部。
+        public const RenderPassEvent ProjectInjectionPoint = RenderPassEvent.AfterRenderingTransparents;
+
         /// <summary>
         /// Greater than or equal to comparison value on Z Test.
         /// </summary>
@@ -847,7 +851,7 @@ namespace Live2D.Cubism.Rendering.URP
             _mScriptablePass = new CubismRenderPass
             {
                 // Configures where the render pass should be injected.
-                renderPassEvent = RenderPassEvent.BeforeRenderingTransparents
+                renderPassEvent = ProjectInjectionPoint
             };
         }
 

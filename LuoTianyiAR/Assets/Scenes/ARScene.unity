@@ -194,11 +194,10 @@ GameObject:
   - component: {fileID: 1143887035}
   - component: {fileID: 1143887034}
   - component: {fileID: 1143887033}
-  - component: {fileID: 1143887041}
-  - component: {fileID: 1143887040}
-  - component: {fileID: 1143887042}
-  - component: {fileID: 1143887043}
   - component: {fileID: 1143887044}
+  - component: {fileID: 1143887045}
+  - component: {fileID: 1143887046}
+  - component: {fileID: 1143887047}
   m_Layer: 0
   m_Name: XR Origin
   m_TagString: Untagged
@@ -322,67 +321,6 @@ Transform:
   - {fileID: 1665304262}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1143887040
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1143887032}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3e93097a46553e042a169c27f9fc4aef, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ARMarkerDiagnostics
-  expectedMarkerName: LuoTianyiDeskMarkerV1
-  expectedMarkerWidthMeters: 0.12
-  acceptableHeightErrorMeters: 0.03
-  acceptableNormalErrorDegrees: 5
-  axisLengthMeters: 0.04
-  diagnosticMaterial: {fileID: 2100000, guid: 592a29eb1a8c0d249948fa74fdb1adb8, type: 2}
---- !u!114 &1143887041
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1143887032}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4dea56a9eaadd1c439095de4f9a371cb, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Unity.XR.ARFoundation::UnityEngine.XR.ARFoundation.ARTrackedImageManager
-  <trackablesChanged>k__BackingField:
-    m_PersistentCalls:
-      m_Calls: []
-  m_SerializedLibrary: {fileID: 11400000, guid: aa20618764ad78641aa13f6e0d93fc33, type: 2}
-  m_MaxNumberOfMovingImages: 1
-  m_TrackedImagePrefab: {fileID: 0}
---- !u!114 &1143887042
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1143887032}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8a76f593745be9f4f90eeef5642e5f2e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ModelNudgeUI
-  stepMeters: 0.05
---- !u!114 &1143887043
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1143887032}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 120177b3fdbe80843b1f745a26aa0cc7, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ExpressionCycleUI
 --- !u!114 &1143887044
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -395,6 +333,58 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ae63fa6e1b84bb94cbb1f2fc72ead5b4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PositionLockUI
+--- !u!114 &1143887045
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1143887032}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7c853af2be3ff334ba90028e809160cd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CameraCaptureUI
+--- !u!114 &1143887046
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1143887032}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3357fb438b405df46b1a998a14475c85, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CaptureGalleryUI
+--- !u!114 &1143887047
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1143887032}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 352b80600eb3c1a45a282780b2d82472, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::AutoHarmonizationController
+  harmonizationEnabled: 1
+  correctionStrength: 0.72
+  responseSpeed: 5
+  minimumBrightness: 0.48
+  maximumBrightness: 1.35
+  manualKeyStrength: 0.36
+  manualAmbientInfluence: 0.45
+  manualMinimumBrightness: 0.82
+  shadowMaterial: {fileID: 2100000, guid: b01d7aef260333b498f1880ac92b27f8, type: 2}
+  primaryShadowMask: {fileID: 2800000, guid: f740fea610e5cba4299ce67c3483c26b, type: 3}
+  alternateShadowMask: {fileID: 2800000, guid: 360ac240a5b5dc7418110715ec926ae1, type: 3}
+  ambientShadowOpacity: 0.14
+  directionalShadowOpacity: 0.36
+  shadowSoftness: 0.72
+  shadowLengthScale: 0.55
+  shadowPlaneOffsetMeters: 0.003
 --- !u!1 &1376303130
 GameObject:
   m_ObjectHideFlags: 0
@@ -594,9 +584,9 @@ MonoBehaviour:
   m_LightEstimationMode: -1
   m_AutoFocus: 1
   m_ImageStabilization: 0
-  m_LightEstimation: 0
+  m_LightEstimation: 31
   m_FacingDirection: 1
-  m_RenderMode: 0
+  m_RenderMode: 2
 --- !u!81 &1376303137
 AudioListener:
   m_ObjectHideFlags: 0

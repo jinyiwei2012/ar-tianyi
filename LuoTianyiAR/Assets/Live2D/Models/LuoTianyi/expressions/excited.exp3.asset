@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: excited.exp3
   m_EditorClassIdentifier: Live2D.Cubism::Live2D.Cubism.Framework.Expression.CubismExpressionData
   Type: Live2D Expression
-  FadeInTime: 1
-  FadeOutTime: 1
+  FadeInTime: 0.3
+  FadeOutTime: 0.3
   Parameters:
   - Id: Param69
     Value: 1

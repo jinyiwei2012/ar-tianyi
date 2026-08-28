@@ -17,6 +17,7 @@ public static class ARSceneSetup
     private const string MarkerTexturePath = "Assets/AR/Markers/LuoTianyiDeskMarkerV1.png";
     private const string MarkerLibraryPath = "Assets/AR/Markers/LuoTianyiMarkerLibrary.asset";
     private const string MarkerMaterialPath = "Assets/AR/Markers/MarkerDiagnosticUnlit.mat";
+    private const string HarmonizationShadowMaterialPath = "Assets/Settings/AutoHarmonizationShadow.mat";
     private const float MarkerPhysicalSizeMeters = 0.12f;
 
     public static void CreateARScene()
@@ -55,6 +56,14 @@ public static class ARSceneSetup
         camera.nearClipPlane = 0.1f;
         camera.farClipPlane = 20f;
 
+        // ARCore 在 Any 模式下默认选择 BeforeOpaques。部分设备/新版
+        // Google Play Services for AR 在 URP 的该路径上会只显示清屏色。
+        // AfterOpaques 仍早于 Cubism 的 BeforeRenderingTransparents，既能避开
+        // 相机黑屏兼容性问题，也不会覆盖透明 Live2D 模型。
+        var cameraManager = cameraGo.GetComponent<ARCameraManager>();
+        cameraManager.requestedBackgroundRenderingMode = CameraBackgroundRenderingMode.AfterOpaques;
+        cameraManager.requestedLightEstimation = AutoHarmonizationController.WorldLightEstimation;
+
         // TrackedPoseDriver 绑定 AR 输入
         var tpd = cameraGo.GetComponent<TrackedPoseDriver>();
         var posAction = new InputAction("Position", binding: "<XRHMD>/centerEyePosition", expectedControlType: "Vector3");
@@ -79,7 +88,6 @@ public static class ARSceneSetup
         planeManager.requestedDetectionMode = PlaneDetectionMode.Horizontal;
         originGo.AddComponent<ARRaycastManager>();
         originGo.AddComponent<ARAnchorManager>();
-        ConfigureMarkerTracking(originGo);
 
         // 4. P0 交互：点击/拖动真实平面，Anchor 保持世界位姿，双指按米缩放。
         var modelPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(ModelPrefabPath);
@@ -91,9 +99,10 @@ public static class ARSceneSetup
         placementObject.FindProperty("modelPrefab").objectReferenceValue = modelPrefab;
         placementObject.ApplyModifiedPropertiesWithoutUndo();
         originGo.AddComponent<PlacementGuideUI>();
-        originGo.AddComponent<ModelNudgeUI>();
-        originGo.AddComponent<ExpressionCycleUI>();
         originGo.AddComponent<PositionLockUI>();
+        var harmonization = originGo.AddComponent<AutoHarmonizationController>();
+        ConfigureHarmonizationMaterial(harmonization);
+        originGo.AddComponent<CameraCaptureUI>();
 
         // 5. 遮挡必须和 ARCameraManager/Camera 在同一对象；否则 RequireComponent 会在
         // XR Origin 上生成一台多余 Camera，既浪费渲染又可能破坏相机选择。
@@ -104,33 +113,94 @@ public static class ARSceneSetup
         if (!AssetDatabase.IsValidFolder("Assets/Scenes"))
             AssetDatabase.CreateFolder("Assets", "Scenes");
         EditorSceneManager.SaveScene(scene, ScenePath);
-        Debug.Log("[ARSceneSetup] ARScene created: horizontal planes + image marker diagnostics + anchors + P0 placement UI + camera occlusion");
+        Debug.Log("[ARSceneSetup] ARScene created: horizontal planes + anchors + 4:3 camera UI + layered capture + camera occlusion");
     }
 
     /// <summary>
-    /// 为现有 ARScene 接入 120 mm 定位卡。AndroidBuild 每次构建都会调用，
-    /// 避免场景或 Reference Image Library 因手工改动而失配。
+    /// 将现有 ARScene 收敛到纯水平面定位和相机式 UI。AndroidBuild 每次构建都会调用，
+    /// 同时移除历史二维码诊断与旧式悬浮按钮。
     /// </summary>
-    public static void ConfigureMarkerDiagnostics()
+    public static void ConfigureCameraExperience()
     {
         var scene = EditorSceneManager.OpenScene(ScenePath);
         var originGo = GameObject.Find("XR Origin");
         if (originGo == null)
             throw new System.InvalidOperationException("[ARSceneSetup] 未找到 XR Origin");
 
-        ConfigureMarkerTracking(originGo);
-        if (originGo.GetComponent<PlaceOnPlane>() != null &&
-            originGo.GetComponent<ModelNudgeUI>() == null)
-            originGo.AddComponent<ModelNudgeUI>();
-        if (originGo.GetComponent<PlaceOnPlane>() != null &&
-            originGo.GetComponent<ExpressionCycleUI>() == null)
-            originGo.AddComponent<ExpressionCycleUI>();
-        if (originGo.GetComponent<PlaceOnPlane>() != null &&
-            originGo.GetComponent<PositionLockUI>() == null)
-            originGo.AddComponent<PositionLockUI>();
+        var cameraManager = Object.FindFirstObjectByType<ARCameraManager>(FindObjectsInactive.Include);
+        if (cameraManager == null)
+            throw new System.InvalidOperationException("[ARSceneSetup] 未找到 ARCameraManager");
+        cameraManager.requestedBackgroundRenderingMode = CameraBackgroundRenderingMode.AfterOpaques;
+        cameraManager.requestedLightEstimation = AutoHarmonizationController.WorldLightEstimation;
+        EditorUtility.SetDirty(cameraManager);
+
+        foreach (var diagnostics in originGo.GetComponents<ARMarkerDiagnostics>())
+            Object.DestroyImmediate(diagnostics);
+        foreach (var manager in originGo.GetComponents<ARTrackedImageManager>())
+            Object.DestroyImmediate(manager);
+        foreach (var nudge in originGo.GetComponents<ModelNudgeUI>())
+            Object.DestroyImmediate(nudge);
+        foreach (var expressions in originGo.GetComponents<ExpressionCycleUI>())
+            Object.DestroyImmediate(expressions);
+
+        if (originGo.GetComponent<PlaceOnPlane>() != null)
+        {
+            if (originGo.GetComponent<PositionLockUI>() == null)
+                originGo.AddComponent<PositionLockUI>();
+            if (originGo.GetComponent<CameraCaptureUI>() == null)
+                originGo.AddComponent<CameraCaptureUI>();
+            if (originGo.GetComponent<CaptureGalleryUI>() == null)
+                originGo.AddComponent<CaptureGalleryUI>();
+            var harmonization = originGo.GetComponent<AutoHarmonizationController>() ??
+                                originGo.AddComponent<AutoHarmonizationController>();
+            ConfigureHarmonizationMaterial(harmonization);
+        }
         EditorSceneManager.SaveScene(scene);
         AssetDatabase.SaveAssets();
-        Debug.Log("[ARSceneSetup] 二维码定位诊断已接入现有 ARScene");
+        Debug.Log("[ARSceneSetup] 已切换为纯平面定位，AR 背景强制 AfterOpaques，并接入默认开启的自动融合与分层拍摄");
+    }
+
+    private static void ConfigureHarmonizationMaterial(AutoHarmonizationController harmonization)
+    {
+        Texture2D[] shadowMasks = ShadowMaskGenerator.EnsureGenerated();
+        var material = AssetDatabase.LoadAssetAtPath<Material>(HarmonizationShadowMaterialPath);
+        if (material == null)
+        {
+            Shader shader = Shader.Find("LuoTianyiAR/SoftShadow");
+            if (shader == null)
+                throw new System.InvalidOperationException("[ARSceneSetup] 找不到 LuoTianyiAR/SoftShadow Shader");
+
+            EnsureAssetFolder("Assets/Settings");
+            material = new Material(shader)
+            {
+                name = "AutoHarmonizationShadow"
+            };
+            material.SetColor("_BaseColor", new Color(0.018f, 0.020f, 0.028f, 0.25f));
+            material.SetFloat("_Softness", 0.72f);
+            AssetDatabase.CreateAsset(material, HarmonizationShadowMaterialPath);
+        }
+
+        material.SetTexture("_ShadowMask", shadowMasks[0]);
+
+        var serialized = new SerializedObject(harmonization);
+        serialized.FindProperty("shadowMaterial").objectReferenceValue = material;
+        serialized.FindProperty("primaryShadowMask").objectReferenceValue = shadowMasks[0];
+        serialized.FindProperty("alternateShadowMask").objectReferenceValue = shadowMasks[1];
+        serialized.ApplyModifiedPropertiesWithoutUndo();
+        EditorUtility.SetDirty(harmonization);
+        EditorUtility.SetDirty(material);
+    }
+
+    private static void EnsureAssetFolder(string folder)
+    {
+        if (AssetDatabase.IsValidFolder(folder))
+            return;
+
+        string parent = System.IO.Path.GetDirectoryName(folder)?.Replace('\\', '/');
+        string name = System.IO.Path.GetFileName(folder);
+        if (!string.IsNullOrEmpty(parent) && !AssetDatabase.IsValidFolder(parent))
+            EnsureAssetFolder(parent);
+        AssetDatabase.CreateFolder(parent, name);
     }
 
     private static void ConfigureMarkerTracking(GameObject originGo)
