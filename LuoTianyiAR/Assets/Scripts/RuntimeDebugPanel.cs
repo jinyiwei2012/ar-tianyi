@@ -6,6 +6,7 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+using Unity.XR.CoreUtils;
 using UnityEngine.XR.ARFoundation;
 
 public sealed class RuntimeDebugPanel : MonoBehaviour
@@ -28,11 +29,13 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     private string copyStatus;
 
     private PlaceOnPlane placement;
+    private ARMarkerDiagnostics markerDiagnostics;
     private ARPlaneManager planeManager;
     private ARCameraManager cameraManager;
     private AROcclusionManager occlusionManager;
     private OcclusionController occlusionController;
     private ARSession arSession;
+    private XROrigin xrOrigin;
 
     public static bool IsOpen => instance != null && instance.isOpen;
 
@@ -80,6 +83,8 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     {
         if (placement == null)
             placement = FindFirstObjectByType<PlaceOnPlane>(FindObjectsInactive.Include);
+        if (markerDiagnostics == null)
+            markerDiagnostics = FindFirstObjectByType<ARMarkerDiagnostics>(FindObjectsInactive.Include);
         if (planeManager == null)
             planeManager = FindFirstObjectByType<ARPlaneManager>(FindObjectsInactive.Include);
         if (cameraManager == null)
@@ -90,6 +95,8 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
             occlusionController = FindFirstObjectByType<OcclusionController>(FindObjectsInactive.Include);
         if (arSession == null)
             arSession = FindFirstObjectByType<ARSession>(FindObjectsInactive.Include);
+        if (xrOrigin == null)
+            xrOrigin = FindFirstObjectByType<XROrigin>(FindObjectsInactive.Include);
     }
 
     public static void Open(string reason)
@@ -250,6 +257,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
 
         return
             $"AR: {ARSession.state} / {ARSession.notTrackingReason}    平面: {planeCount}\n" +
+            $"定位卡: {(markerDiagnostics != null ? markerDiagnostics.GetShortStatus() : "组件缺失")}\n" +
             $"模型: {modelState}    FPS: {smoothedFps:F0}    管线: {pipeline}\n" +
             $"遮挡: {occlusionState}    Render Features: {GetRendererFeatureSummary()}";
     }
@@ -292,12 +300,22 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         report.AppendLine("--- AR ---");
         report.AppendLine($"Session: state={ARSession.state}, reason={ARSession.notTrackingReason}");
         report.AppendLine($"ARSession component: present={arSession != null}, enabled={arSession != null && arSession.enabled}");
+        string xrOffset = xrOrigin != null && xrOrigin.CameraFloorOffsetObject != null
+            ? xrOrigin.CameraFloorOffsetObject.transform.localPosition.ToString("F3")
+            : "missing";
+        report.AppendLine(xrOrigin != null
+            ? $"XR Origin: requested={xrOrigin.RequestedTrackingOriginMode}, current={xrOrigin.CurrentTrackingOriginMode}, cameraYOffset={xrOrigin.CameraYOffset:F4}m, offsetLocal={xrOffset}"
+            : "XR Origin: missing");
         report.AppendLine($"Planes: count={(planeManager != null ? planeManager.trackables.count : 0)}, mode={(planeManager != null ? planeManager.currentDetectionMode.ToString() : "missing")}");
         report.AppendLine($"Camera: present={cameraManager != null}, enabled={cameraManager != null && cameraManager.enabled}, permission={cameraManager != null && cameraManager.permissionGranted}, facing={(cameraManager != null ? cameraManager.currentFacingDirection.ToString() : "missing")}, background={(cameraManager != null ? cameraManager.currentRenderingMode.ToString() : "missing")}");
         string occlusionLine = occlusionController != null
             ? occlusionController.GetDiagnosticLine()
             : "controller=missing";
         report.AppendLine($"Occlusion: {occlusionLine}");
+        report.AppendLine();
+
+        report.AppendLine("--- 二维码定位 ---");
+        report.AppendLine(markerDiagnostics != null ? markerDiagnostics.GetDebugSnapshot() : "ARMarkerDiagnostics component missing");
         report.AppendLine();
 
         report.AppendLine("--- 模型 ---");

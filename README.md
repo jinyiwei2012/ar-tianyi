@@ -42,7 +42,7 @@
 
 ## 构建 APK
 
-需要本机安装 Unity 6000.3.22f1。命令行批处理构建（详见 `docs/HANDOFF_AR_PLACEMENT.md` 第 9 节）：
+需要本机安装 Unity 6000.3.22f1。命令行批处理构建（环境变量见 `AndroidBuild.cs`）：
 
 ```powershell
 $project = '<repo>\LuoTianyiAR'
@@ -62,21 +62,24 @@ $env:ANDROID_NDK_ROOT  = "$android\NDK"
 
 - 需要支持 ARCore 的 Android 设备（安装 Google Play Services for AR）
 - `adb install -r LuoTianyiAR.apk` 覆盖安装后启动
-- 右上角"调试"按钮可复制诊断报告；`PlaceOnPlane` 的 `enablePlacementDiagnosticMarkers` 开关会在命中点生成独立标记，用于区分 ARCore 命中与模型对齐问题
+- 右上角"调试"按钮可复制诊断报告（含 XR Origin、定位卡、遮挡与模型对齐数据）
+- 二维码定位卡：打印 `AR/Markers/LuoTianyiDeskMarkerV1.png`（120mm，A4 版式见 `output/pdf/`），画面识别后首放目标自动对准卡片中心，`markerAlignment` 诊断可量化模型与卡片的偏差
 
-## 当前状态（2026-08-27）
+## 当前状态（2026-08-28）
 
 - ✅ P0 平面链路已在真机跑通：模型显示、相机读取、放置 UI、平面识别、Anchor
-- ✅ Phase 2 移动代码已实现：点击走路 + 状态机 + 程序化动画（呼吸/眨眼/走路律动），待真机验证
-- 🔧 进行中："模型不在准星位置"的偏移诊断（见 `HANDOFF_AR_PLACEMENT.md`）——已实现中心准星模式、拖动阈值、Placement Root、footCenter 完整 XYZ 对齐，待真机复测
-- 🔧 进行中：Phase 3 遮挡（`feat/phase3-occlusion` 分支）——遮挡诊断 + 参照立方体 + 深度模式监控已实现，待真机验证
+- ✅ Phase 2 移动已实现：点击走路 + 状态机 + 程序化动画（呼吸/头部微摆/走路律动）+ 平面边界限制 + 速度联动，待真机验证
+- ✅ 位置偏移根因已修复（XR Origin Camera Y Offset → Device/0m、异步 Pose Anchor），并新增二维码定位卡作为位置 ground truth，待真机复验
+- ✅ debut 侧功能合入：视线追踪、表情切换、自然待机（SDK 呼吸/眨眼/物理）、手动纠偏/位置锁定、主光源与影子
+- 🔧 进行中：Phase 3 遮挡——遮挡诊断 + 参照立方体 + 深度模式监控已实现，待真机验证
 
 ## 分支说明
 
 | 分支 | 说明 |
 |------|------|
-| `main` | 主开发分支（含最新代码修复与文档更新） |
-| `debut` | 含 `HANDOFF_AR_PLACEMENT.md` 交接文档（诊断入口） |
+| `main` | 集成分支（debut/phase2/phase3/camera_mode/harmory 已全部合入） |
+| `debut` | 队友开发线（位置修复 + 定位卡/视线追踪等），已合入 main |
+| `feat/phase3-occlusion` | 遮挡诊断线，已合入 main |
 | `release/v1.0.0` | 发布分支，推送时由 CI 构建 APK |
 
 > 约束：不要把洛天依模型数据喂给生成式大模型（见 PRD）。

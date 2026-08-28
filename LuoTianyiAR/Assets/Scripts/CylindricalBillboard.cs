@@ -1,6 +1,6 @@
-// CylindricalBillboard.cs — PRD 第 2 节: 只绕世界竖直轴转向相机。
+// CylindricalBillboard.cs — 兼容旧组件名的完整相机朝向 Billboard。
 // Cubism 模型的可见正面朝本地 -Z（SDK 示例相机位于模型的 -Z 侧），
-// 因此必须让 transform.back 而不是 transform.forward 指向相机。
+// 因此必须让 transform.back 而不是 transform.forward 始终指向相机。
 using UnityEngine;
 
 public class CylindricalBillboard : MonoBehaviour
@@ -57,7 +57,8 @@ public class CylindricalBillboard : MonoBehaviour
     }
 
     /// <summary>
-    /// 计算仅含 yaw 的稳定朝向。返回的 rotation 保证本地 -Z 指向相机、Y 保持世界竖直。
+    /// 计算完整 3D 朝向。返回的 rotation 保证本地 -Z 指向相机；本地 Y 使用
+    /// 世界竖直在模型平面上的投影，既能跟随相机俯仰，又避免手机横滚使角色侧倒。
     /// </summary>
     public static bool TryGetFacingRotation(
         Vector3 modelPosition,
@@ -67,14 +68,20 @@ public class CylindricalBillboard : MonoBehaviour
         // LookRotation 令本地 +Z 指向 forward；Cubism 正面是本地 -Z，
         // 所以 forward 应从相机指向模型，而不是从模型指向相机。
         var cameraToModel = modelPosition - cameraPosition;
-        cameraToModel.y = 0f;
         if (cameraToModel.sqrMagnitude < 0.0001f)
         {
             rotation = Quaternion.identity;
             return false;
         }
 
-        rotation = Quaternion.LookRotation(cameraToModel, Vector3.up);
+        cameraToModel.Normalize();
+        Vector3 stableUp = Vector3.ProjectOnPlane(Vector3.up, cameraToModel);
+        if (stableUp.sqrMagnitude < 0.0001f)
+            stableUp = Vector3.ProjectOnPlane(Vector3.forward, cameraToModel);
+        if (stableUp.sqrMagnitude < 0.0001f)
+            stableUp = Vector3.right;
+
+        rotation = Quaternion.LookRotation(cameraToModel, stableUp.normalized);
         return true;
     }
 
@@ -86,7 +93,6 @@ public class CylindricalBillboard : MonoBehaviour
                 return float.NaN;
 
             var toCamera = cameraTransform.position - transform.position;
-            toCamera.y = 0f;
             if (toCamera.sqrMagnitude < 0.0001f)
                 return float.NaN;
 

@@ -6,13 +6,14 @@
 
 ---
 
-## 当前状态快照（2026-08-27）
+## 当前状态快照（2026-08-28）
 
 - **Phase 0 已完成**：依赖、场景、构建、真机运行均就绪（历史"未完成"表述已修正）。
 - **Phase 1 主体完成**：ARScene 可运行，真机已验证模型显示、相机读取、放置 UI、平面识别与 Anchor。
-- **进行中**：`HANDOFF_AR_PLACEMENT.md`（debut 分支）记录的"模型不在准星位置"偏移问题。已实现中心准星模式 / 拖动阈值 / Placement Root / footCenter 完整 XYZ 对齐，等待真机复测。
-- **Phase 2 代码已实现（待真机验证）**：点击已放置模型 → 洛天依走向目标点（LuoMovement 状态机 + 贴地 raycast + 行走时暂停 billboard），拖动仍可瞬移接管；`feat/phase2-movement` 分支。
-- **Phase 3 代码已实现（待真机验证）**：遮挡诊断（IsOcclusionEnabled/GetDiagnosticLine + 深度模式变化监控）+ 遮挡参照立方体（普通 URP 几何，对比 Cubism 是否参与 depth test）；`feat/phase3-occlusion` 分支。若真机确认 Cubism 未参与 depth test，再启用 RenderTexture fallback（PRD 第 10 节）。
+- **偏移根因已修复（待真机复验）**：XR Origin 误用 VR 式 1.1176m Camera Y Offset → 改为 Device/0m；Anchor 首帧 Transform 依赖 → 改为异步 TryAddAnchorAsync + 显式保存 raycast 世界 Pose。新增二维码定位卡作为位置 ground truth（`ARMarkerDiagnostics` + `tools/generate_qr_marker.py`）。
+- **Phase 2 已实现（待真机验证）**：点击已放置模型 → 洛天依走向目标点（LuoMovement 状态机 + 贴地 raycast + 行走时暂停 billboard + 平面边界限制 + 速度联动律动），拖动仍可瞬移接管。
+- **Phase 3 代码已实现（待真机验证）**：遮挡诊断（IsOcclusionEnabled/GetDiagnosticLine + 深度模式变化监控）+ 遮挡参照立方体（普通 URP 几何，对比 Cubism 是否参与 depth test）。若真机确认 Cubism 未参与 depth test，再启用 RenderTexture fallback（PRD 第 10 节）。
+- **debut 合入的新能力**：视线追踪（CubismScreenLookController，Additive）、表情切换、SDK 自然待机（HarmonicMotion 呼吸/EyeBlink/物理）、手动纠偏（ModelNudgeUI/PositionLockUI）、主光源与影子（AutoHarmonization，随后续分支合入）。
 
 ---
 

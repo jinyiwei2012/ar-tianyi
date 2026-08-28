@@ -324,24 +324,30 @@ namespace Live2D.Cubism.Rendering
             var property = PropertyBlock;
             MeshRenderer.GetPropertyBlock(property);
 
-            // Set offset and scale from transform.
+            // The command-buffer draw calls use an identity model matrix, so the
+            // shader must receive the complete world transform. Using only the
+            // render controller's local transform drops ARAnchor/model-pose-root
+            // transforms and makes an anchored model render near the scene origin.
+            var worldPosition = transform.position;
+            var worldScale = transform.lossyScale;
+            var worldRotation = transform.rotation;
+
+            // Set world offset and scale from the complete transform hierarchy.
             var offsetScale = _offsetScale;
 
-            offsetScale.Set(RenderController.transform.localPosition.x + transform.localPosition.x, RenderController.transform.localPosition.y + transform.localPosition.y,
-                RenderController.transform.localScale.x * transform.localScale.x, RenderController.transform.localScale.y * transform.localScale.y);
+            offsetScale.Set(worldPosition.x, worldPosition.y, worldScale.x, worldScale.y);
             _offsetScale = offsetScale;
             // Write property.
             property.SetVector(CubismShaderVariables.OffsetScale, _offsetScale);
 
-            // Set rotation from transform.
-            var combinedRotation = RenderController.transform.localRotation * transform.localRotation;
-            _quaternion.Set(combinedRotation.x, combinedRotation.y, combinedRotation.z, combinedRotation.w);
+            // Set world rotation from the complete transform hierarchy.
+            _quaternion.Set(worldRotation.x, worldRotation.y, worldRotation.z, worldRotation.w);
 
             // Write property.
             property.SetVector(CubismShaderVariables.RotationQuaternion, _quaternion);
 
-            // Set z offset from transform.
-            _zOffset = RenderController.transform.localPosition.z + transform.localPosition.z;
+            // Set world z offset from the complete transform hierarchy.
+            _zOffset = worldPosition.z;
             // Write property.
             property.SetFloat(CubismShaderVariables.ZOffset, _zOffset);
 

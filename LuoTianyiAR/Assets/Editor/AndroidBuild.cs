@@ -44,6 +44,7 @@ public static class AndroidBuild
         ValidateCubismRenderingConfiguration();
         ValidateBillboardFacingConvention();
         EnableARCoreLoader();
+        ARSceneSetup.ConfigureMarkerDiagnostics();
         AddSceneToBuild();
 
         var buildDir = Path.Combine(Directory.GetCurrentDirectory(), "Builds");
@@ -330,10 +331,10 @@ public static class AndroidBuild
         }
 
         var expectedFront = cameraPosition - modelPosition;
-        expectedFront.y = 0f;
         expectedFront.Normalize();
         float frontDot = Vector3.Dot(rotation * Vector3.back, expectedFront);
-        float upDot = Vector3.Dot(rotation * Vector3.up, Vector3.up);
+        var expectedUp = Vector3.ProjectOnPlane(Vector3.up, modelPosition - cameraPosition).normalized;
+        float upDot = Vector3.Dot(rotation * Vector3.up, expectedUp);
         if (frontDot < 0.9999f || upDot < 0.9999f)
         {
             throw new BuildFailedException(

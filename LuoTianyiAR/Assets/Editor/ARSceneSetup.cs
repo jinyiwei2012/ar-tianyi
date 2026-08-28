@@ -7,12 +7,17 @@ using UnityEngine.InputSystem.XR;
 using UnityEngine.XR.ARFoundation;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using UnityEditor.XR.ARSubsystems;
 using UnityEngine.XR.ARSubsystems;
 
 public static class ARSceneSetup
 {
     private const string ScenePath = "Assets/Scenes/ARScene.unity";
     private const string ModelPrefabPath = "Assets/Live2D/Models/LuoTianyi/model.prefab";
+    private const string MarkerTexturePath = "Assets/AR/Markers/LuoTianyiDeskMarkerV1.png";
+    private const string MarkerLibraryPath = "Assets/AR/Markers/LuoTianyiMarkerLibrary.asset";
+    private const string MarkerMaterialPath = "Assets/AR/Markers/MarkerDiagnosticUnlit.mat";
+    private const float MarkerPhysicalSizeMeters = 0.12f;
 
     public static void CreateARScene()
     {
@@ -63,12 +68,18 @@ public static class ARSceneSetup
         var origin = originGo.GetComponent<XROrigin>();
         origin.CameraFloorOffsetObject = offsetGo;
         origin.Camera = camera;
+        // Handheld AR 使用设备原点，不能沿用 XR/VR 模板默认的 1.1176m 头部高度。
+        // 否则相机被额外抬高，而 ARCore 平面、raycast 与 anchor 仍位于 session 空间，
+        // 会表现为模型靠近手机、落不到平面且随追踪漂移。
+        origin.RequestedTrackingOriginMode = XROrigin.TrackingOriginMode.Device;
+        origin.CameraYOffset = 0f;
 
         // 3. Trackable 管理器挂到 XR Origin (ARF 6.x 规范)
         var planeManager = originGo.AddComponent<ARPlaneManager>();
         planeManager.requestedDetectionMode = PlaneDetectionMode.Horizontal;
         originGo.AddComponent<ARRaycastManager>();
         originGo.AddComponent<ARAnchorManager>();
+        ConfigureMarkerTracking(originGo);
 
         // 4. P0 交互：点击/拖动真实平面，Anchor 保持世界位姿，双指按米缩放。
         var modelPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(ModelPrefabPath);
@@ -80,6 +91,9 @@ public static class ARSceneSetup
         placementObject.FindProperty("modelPrefab").objectReferenceValue = modelPrefab;
         placementObject.ApplyModifiedPropertiesWithoutUndo();
         originGo.AddComponent<PlacementGuideUI>();
+        originGo.AddComponent<ModelNudgeUI>();
+        originGo.AddComponent<ExpressionCycleUI>();
+        originGo.AddComponent<PositionLockUI>();
 
         // 5. 遮挡必须和 ARCameraManager/Camera 在同一对象；否则 RequireComponent 会在
         // XR Origin 上生成一台多余 Camera，既浪费渲染又可能破坏相机选择。
@@ -90,7 +104,122 @@ public static class ARSceneSetup
         if (!AssetDatabase.IsValidFolder("Assets/Scenes"))
             AssetDatabase.CreateFolder("Assets", "Scenes");
         EditorSceneManager.SaveScene(scene, ScenePath);
-        Debug.Log("[ARSceneSetup] ARScene created: horizontal planes + anchors + P0 placement UI + camera occlusion");
+        Debug.Log("[ARSceneSetup] ARScene created: horizontal planes + image marker diagnostics + anchors + P0 placement UI + camera occlusion");
+    }
+
+    /// <summary>
+    /// 为现有 ARScene 接入 120 mm 定位卡。AndroidBuild 每次构建都会调用，
+    /// 避免场景或 Reference Image Library 因手工改动而失配。
+    /// </summary>
+    public static void ConfigureMarkerDiagnostics()
+    {
+        var scene = EditorSceneManager.OpenScene(ScenePath);
+        var originGo = GameObject.Find("XR Origin");
+        if (originGo == null)
+            throw new System.InvalidOperationException("[ARSceneSetup] 未找到 XR Origin");
+
+        ConfigureMarkerTracking(originGo);
+        if (originGo.GetComponent<PlaceOnPlane>() != null &&
+            originGo.GetComponent<ModelNudgeUI>() == null)
+            originGo.AddComponent<ModelNudgeUI>();
+        if (originGo.GetComponent<PlaceOnPlane>() != null &&
+            originGo.GetComponent<ExpressionCycleUI>() == null)
+            originGo.AddComponent<ExpressionCycleUI>();
+        if (originGo.GetComponent<PlaceOnPlane>() != null &&
+            originGo.GetComponent<PositionLockUI>() == null)
+            originGo.AddComponent<PositionLockUI>();
+        EditorSceneManager.SaveScene(scene);
+        AssetDatabase.SaveAssets();
+        Debug.Log("[ARSceneSetup] 二维码定位诊断已接入现有 ARScene");
+    }
+
+    private static void ConfigureMarkerTracking(GameObject originGo)
+    {
+        var library = EnsureMarkerReferenceLibrary();
+        var imageManager = originGo.GetComponent<ARTrackedImageManager>() ??
+                           originGo.AddComponent<ARTrackedImageManager>();
+        imageManager.referenceLibrary = library;
+        imageManager.requestedMaxNumberOfMovingImages = 1;
+
+        var diagnostics = originGo.GetComponent<ARMarkerDiagnostics>() ??
+                          originGo.AddComponent<ARMarkerDiagnostics>();
+        var diagnosticsObject = new SerializedObject(diagnostics);
+        diagnosticsObject.FindProperty("axisLengthMeters").floatValue = 0.04f;
+        diagnosticsObject.FindProperty("diagnosticMaterial").objectReferenceValue =
+            EnsureMarkerDiagnosticMaterial();
+        diagnosticsObject.ApplyModifiedPropertiesWithoutUndo();
+
+        EditorUtility.SetDirty(originGo);
+        EditorUtility.SetDirty(imageManager);
+        EditorUtility.SetDirty(diagnostics);
+    }
+
+    private static Material EnsureMarkerDiagnosticMaterial()
+    {
+        var material = AssetDatabase.LoadAssetAtPath<Material>(MarkerMaterialPath);
+        if (material != null)
+            return material;
+
+        var shader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (shader == null)
+            throw new System.InvalidOperationException("[ARSceneSetup] Editor 中找不到 URP Unlit Shader");
+
+        material = new Material(shader)
+        {
+            name = "MarkerDiagnosticUnlit"
+        };
+        if (material.HasProperty("_BaseColor"))
+            material.SetColor("_BaseColor", Color.white);
+        AssetDatabase.CreateAsset(material, MarkerMaterialPath);
+        EditorUtility.SetDirty(material);
+        return material;
+    }
+
+    private static XRReferenceImageLibrary EnsureMarkerReferenceLibrary()
+    {
+        if (AssetImporter.GetAtPath(MarkerTexturePath) is not TextureImporter importer)
+            throw new System.InvalidOperationException($"[ARSceneSetup] 找不到定位卡图片: {MarkerTexturePath}");
+
+        importer.textureType = TextureImporterType.Default;
+        importer.textureCompression = TextureImporterCompression.Uncompressed;
+        importer.mipmapEnabled = false;
+        importer.sRGBTexture = true;
+        importer.maxTextureSize = 2048;
+        importer.SaveAndReimport();
+
+        var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(MarkerTexturePath);
+        if (texture == null)
+            throw new System.InvalidOperationException($"[ARSceneSetup] 无法导入定位卡图片: {MarkerTexturePath}");
+
+        var library = AssetDatabase.LoadAssetAtPath<XRReferenceImageLibrary>(MarkerLibraryPath);
+        if (library == null)
+        {
+            library = ScriptableObject.CreateInstance<XRReferenceImageLibrary>();
+            library.name = "LuoTianyiMarkerLibrary";
+            AssetDatabase.CreateAsset(library, MarkerLibraryPath);
+        }
+
+        while (library.count > 1)
+            library.RemoveAt(library.count - 1);
+        if (library.count == 0)
+            library.Add();
+
+        library.SetName(0, ARMarkerDiagnostics.DefaultMarkerName);
+        library.SetTexture(0, texture, false);
+        library.SetSpecifySize(0, true);
+        library.SetSize(0, new Vector2(MarkerPhysicalSizeMeters, MarkerPhysicalSizeMeters));
+        EditorUtility.SetDirty(library);
+        AssetDatabase.SaveAssets();
+
+        var referenceImage = library[0];
+        if (referenceImage.name != ARMarkerDiagnostics.DefaultMarkerName ||
+            !referenceImage.specifySize ||
+            Mathf.Abs(referenceImage.size.x - MarkerPhysicalSizeMeters) > 0.0001f)
+        {
+            throw new System.InvalidOperationException("[ARSceneSetup] 定位卡 Reference Image Library 校验失败");
+        }
+
+        return library;
     }
 
     /// 给已存在的 ARScene 补挂遮挡组件（不重建场景）

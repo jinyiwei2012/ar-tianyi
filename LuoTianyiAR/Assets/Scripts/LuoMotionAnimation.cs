@@ -1,7 +1,12 @@
 // LuoMotionAnimation.cs — PRD Phase 2: 程序化驱动 Cubism 参数动画
-// Idle: 呼吸（ParamBodyAngleZ）+ 随机眨眼（ParamEyeLOpen/ROpen）+ 头部微摆
+// Idle: 呼吸（ParamBodyAngleZ）+ 头部微摆（ParamAngleY）
 // Walking: 走路律动（身体前后/左右摆动，不依赖 motion3.json 资产）
 // 参数按 Id 缓存，缺失时跳过；挂在模型根节点上，由 LuoMovement 切换模式。
+// 与 Live2DModelFeatures 的 SDK Framework 组件分工：
+// - 眨眼（ParamEyeLOpen/ROpen）、表情、物理、ParamBreath 呼吸由 SDK 组件负责；
+//   本组件不得再写眼睛参数，否则两套系统每帧互相覆盖。
+// - 视线追踪（CubismLookController）为 Additive 混合，叠加在本组件写入的
+//   身体/头部基础值之上，互不冲突。
 using UnityEngine;
 using Live2D.Cubism.Core;
 
@@ -13,11 +18,6 @@ public class LuoMotionAnimation : MonoBehaviour
     [SerializeField] private float headSwayAmplitude = 3f;      // 度
     [SerializeField] private float headSwaySpeed = 0.25f;       // Hz
 
-    [Header("Idle 眨眼")]
-    [SerializeField] private float blinkMinInterval = 2f;       // 秒
-    [SerializeField] private float blinkMaxInterval = 6f;
-    [SerializeField] private float blinkDuration = 0.18f;       // 闭眼→睁眼总时长
-
     [Header("Walking 律动")]
     [SerializeField] private float walkBounceAmplitude = 2f;    // 度（前后倾）
     [SerializeField] private float walkSwayAmplitude = 3f;      // 度（左右摆）
@@ -26,11 +26,8 @@ public class LuoMotionAnimation : MonoBehaviour
     private CubismParameter bodyAngleZ;
     private CubismParameter bodyAngleY;
     private CubismParameter angleY;
-    private CubismParameter eyeLOpen;
-    private CubismParameter eyeROpen;
 
     private bool isWalking;
-    private float nextBlinkAt;
     private float walkingIntensity = 1f;
 
     private void Start()
@@ -50,16 +47,8 @@ public class LuoMotionAnimation : MonoBehaviour
                 case "ParamBodyAngleZ": bodyAngleZ = p; break;
                 case "ParamBodyAngleY": bodyAngleY = p; break;
                 case "ParamAngleY":    angleY = p;    break;
-                case "ParamEyeLOpen":  eyeLOpen = p;  break;
-                case "ParamEyeROpen":  eyeROpen = p;  break;
             }
         }
-
-        // 初始睁眼
-        if (eyeLOpen != null) eyeLOpen.Value = 1f;
-        if (eyeROpen != null) eyeROpen.Value = 1f;
-
-        ScheduleNextBlink();
     }
 
     /// <summary>由 LuoMovement 在行走/停止时切换。</summary>
@@ -72,16 +61,10 @@ public class LuoMotionAnimation : MonoBehaviour
 
         if (walking)
         {
-            // 进入走路：睁眼，复位头部
-            if (eyeLOpen != null) eyeLOpen.Value = 1f;
-            if (eyeROpen != null) eyeROpen.Value = 1f;
+            // 进入走路：复位头部，让位给走路律动。
             if (angleY != null) angleY.Value = 0f;
         }
-        else
-        {
-            // 回到 idle：从零相位开始呼吸
-            ScheduleNextBlink();
-        }
+        // 回到 idle：呼吸从头开始由 Update 自然接管，眨眼交还 SDK 眨眼组件。
     }
 
     /// <summary>由 LuoMovement 在行走时传入当前强度（0=减速停止，1=全速），联动律动频率与幅度。</summary>
@@ -102,18 +85,13 @@ public class LuoMotionAnimation : MonoBehaviour
     {
         float t = Time.time;
 
-        // 呼吸：身体前后轻微起伏
+        // 呼吸：身体前后轻微起伏（SDK 的 ParamBreath 谐振是独立参数，可叠加）。
         if (bodyAngleZ != null)
             bodyAngleZ.Value = breatheAmplitude * Mathf.Sin(t * breatheSpeed * Mathf.PI * 2f);
 
-        // 头部缓慢左右摆动
+        // 头部缓慢左右摆动；视线追踪在此基础上 Additive 叠加。
         if (angleY != null)
             angleY.Value = headSwayAmplitude * Mathf.Sin(t * headSwaySpeed * Mathf.PI * 2f);
-
-        // 眨眼
-        float blink = ComputeBlink();
-        if (eyeLOpen != null) eyeLOpen.Value = blink;
-        if (eyeROpen != null) eyeROpen.Value = blink;
     }
 
     private void UpdateWalking()
@@ -128,39 +106,5 @@ public class LuoMotionAnimation : MonoBehaviour
             bodyAngleZ.Value = walkBounceAmplitude * walkingIntensity * Mathf.Sin(phase);
         if (bodyAngleY != null)
             bodyAngleY.Value = walkSwayAmplitude * walkingIntensity * Mathf.Sin(phase * 0.5f);
-
-        // 走路时睁眼
-        if (eyeLOpen != null) eyeLOpen.Value = 1f;
-        if (eyeROpen != null) eyeROpen.Value = 1f;
-    }
-
-    private float ComputeBlink()
-    {
-        if (Time.time < nextBlinkAt)
-            return 1f;
-
-        float elapsed = Time.time - nextBlinkAt;
-        float half = blinkDuration * 0.5f;
-
-        if (elapsed < half)
-        {
-            // 闭眼阶段：1 → 0
-            return 1f - elapsed / half;
-        }
-        else if (elapsed < blinkDuration)
-        {
-            // 睁眼阶段：0 → 1
-            return (elapsed - half) / half;
-        }
-        else
-        {
-            ScheduleNextBlink();
-            return 1f;
-        }
-    }
-
-    private void ScheduleNextBlink()
-    {
-        nextBlinkAt = Time.time + Random.Range(blinkMinInterval, blinkMaxInterval);
     }
 }
