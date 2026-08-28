@@ -147,7 +147,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fa850fbd5b8aded44846f96e35f1a9f5, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.XR.ARFoundation::UnityEngine.XR.ARFoundation.ARInputManager
 --- !u!114 &966964078
 MonoBehaviour:
@@ -159,7 +159,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 3859a92a05d4f5d418cb6ca605290e74, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.XR.ARFoundation::UnityEngine.XR.ARFoundation.ARSession
   m_AttemptUpdate: 1
   m_MatchFrameRate: 1
@@ -194,6 +194,11 @@ GameObject:
   - component: {fileID: 1143887035}
   - component: {fileID: 1143887034}
   - component: {fileID: 1143887033}
+  - component: {fileID: 1143887041}
+  - component: {fileID: 1143887040}
+  - component: {fileID: 1143887042}
+  - component: {fileID: 1143887043}
+  - component: {fileID: 1143887044}
   m_Layer: 0
   m_Name: XR Origin
   m_TagString: Untagged
@@ -211,7 +216,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 8595bf55dafe523419040227e256a017, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlacementGuideUI
 --- !u!114 &1143887034
 MonoBehaviour:
@@ -223,12 +228,18 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2bf3c3495536f0549b7043421551b936, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlaceOnPlane
   modelPrefab: {fileID: 9060249271321255669, guid: 7259a8840e45d914e84742b4f4e4f739, type: 3}
   targetHeightMeters: 0.6
-  minimumHeightMeters: 0.2
+  minimumHeightMeters: 0.08
   maximumHeightMeters: 1.5
+  maximumInitialViewportHeight: 0.38
+  maximumInitialViewportWidth: 0.55
+  leftLegDrawableId: ArtMesh97
+  rightLegDrawableId: ArtMesh98
+  modelInitializationFrameLimit: 120
+  dragStartThresholdPixels: 32
 --- !u!114 &1143887035
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -239,7 +250,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 728ad7fae8e460a4ba41265c7308d757, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.XR.ARFoundation::UnityEngine.XR.ARFoundation.ARAnchorManager
   <trackablesChanged>k__BackingField:
     m_PersistentCalls:
@@ -255,7 +266,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fa17d122634046b4a8e23048891fafc5, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.XR.ARFoundation::UnityEngine.XR.ARFoundation.ARRaycastManager
   <trackablesChanged>k__BackingField:
     m_PersistentCalls:
@@ -271,7 +282,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e1760703bbd54c04488a8d10600262ab, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.XR.ARFoundation::UnityEngine.XR.ARFoundation.ARPlaneManager
   <trackablesChanged>k__BackingField:
     m_PersistentCalls:
@@ -288,13 +299,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e0cb9aa70a22847b5925ee5f067c10a9, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.XR.CoreUtils::Unity.XR.CoreUtils.XROrigin
   m_Camera: {fileID: 1376303138}
   m_OriginBaseGameObject: {fileID: 1143887032}
   m_CameraFloorOffsetObject: {fileID: 1665304261}
-  m_RequestedTrackingOriginMode: 0
-  m_CameraYOffset: 1.1176
+  m_RequestedTrackingOriginMode: 1
+  m_CameraYOffset: 0
 --- !u!4 &1143887039
 Transform:
   m_ObjectHideFlags: 0
@@ -311,6 +322,79 @@ Transform:
   - {fileID: 1665304262}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1143887040
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1143887032}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3e93097a46553e042a169c27f9fc4aef, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ARMarkerDiagnostics
+  expectedMarkerName: LuoTianyiDeskMarkerV1
+  expectedMarkerWidthMeters: 0.12
+  acceptableHeightErrorMeters: 0.03
+  acceptableNormalErrorDegrees: 5
+  axisLengthMeters: 0.04
+  diagnosticMaterial: {fileID: 2100000, guid: 592a29eb1a8c0d249948fa74fdb1adb8, type: 2}
+--- !u!114 &1143887041
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1143887032}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4dea56a9eaadd1c439095de4f9a371cb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.XR.ARFoundation::UnityEngine.XR.ARFoundation.ARTrackedImageManager
+  <trackablesChanged>k__BackingField:
+    m_PersistentCalls:
+      m_Calls: []
+  m_SerializedLibrary: {fileID: 11400000, guid: aa20618764ad78641aa13f6e0d93fc33, type: 2}
+  m_MaxNumberOfMovingImages: 1
+  m_TrackedImagePrefab: {fileID: 0}
+--- !u!114 &1143887042
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1143887032}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8a76f593745be9f4f90eeef5642e5f2e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ModelNudgeUI
+  stepMeters: 0.05
+--- !u!114 &1143887043
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1143887032}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 120177b3fdbe80843b1f745a26aa0cc7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ExpressionCycleUI
+--- !u!114 &1143887044
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1143887032}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ae63fa6e1b84bb94cbb1f2fc72ead5b4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PositionLockUI
 --- !u!1 &1376303130
 GameObject:
   m_ObjectHideFlags: 0
@@ -359,7 +443,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 5cfff39b7cbdba043b09de0851c7b932, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OcclusionController
   forceDisable: 0
 --- !u!114 &1376303133
@@ -372,7 +456,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b15f82cc229284894964d2d30806969d, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.XR.ARFoundation::UnityEngine.XR.ARFoundation.AROcclusionManager
   m_HumanSegmentationStencilMode: 0
   m_HumanSegmentationDepthMode: 0
@@ -506,8 +590,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4966719baa26e4b0e8231a24d9bd491a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.XR.ARFoundation::UnityEngine.XR.ARFoundation.ARCameraManager
-  m_FocusMode: 1
-  m_LightEstimationMode: 0
+  m_FocusMode: -1
+  m_LightEstimationMode: -1
   m_AutoFocus: 1
   m_ImageStabilization: 0
   m_LightEstimation: 0

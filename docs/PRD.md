@@ -23,9 +23,13 @@
 - Unity 6.0 + AR Foundation 6.3.5 + ARCore 6.3.5 + Live2D Cubism SDK 工程可编译并生成 ARM64 APK。
 - Android XR 设置会由构建脚本幂等创建；ARCore Loader 自动加载/启动，构建失败时不再产出“非 AR 的成功 APK”。
 - P0 平面链路已接通：仅检测水平平面，屏幕触摸 raycast 到真实平面，并创建附着于该平面的 ARAnchor。
-- 模型首次按 0.60 米世界高度放置，合并全部 Cubism ArtMesh 的包围盒计算身高；透视相机负责随距离变化显示大小。
-- 支持单指拖动到其他已检测平面、双指在 0.20–1.50 米之间调整世界高度；模型按 Cubism 正面本地 `-Z` 约定，仅绕世界竖直轴持续朝向相机，移动和 Anchor 更新均不得暴露背面。
+- 模型以 0.60 米作为首次世界高度上限，合并全部 Cubism ArtMesh 的包围盒计算身高；透视相机负责随距离变化显示大小。
+- 0.60 米现作为首次放置的世界高度上限；运行时结合命中距离、AR 相机真实投影矩阵、模型宽高比与屏幕尺寸二分求解初始身高，使角色完整留在安全区域内，并将初始占屏控制在约 55% 宽、38% 高以内。近距离桌面自动缩小，之后仍可双指调整到 0.08–1.50 米。
+- 支持单指拖动到其他已检测平面、双指在 0.08–1.50 米之间调整世界高度；模型按 Cubism 正面本地 `-Z` 约定做完整 3D 相机朝向，并以世界竖直投影稳定角色上方向，移动、相机俯仰和 Anchor 更新均不得暴露背面。
+- 首次放置已统一为“点击确认中心准星”；Anchor 下使用独立 Pose Root，并将 Live2D 运行时包围盒的脚底中心完整对齐落点；单指移动超过阈值后才进入拖动，避免点击微移导致 Anchor 偷换。真机复验发现 XR Origin 误用了 VR 默认的 1.1176m Camera Y Offset，且模型过度依赖 Anchor 创建首帧的 Transform；现已将手持 AR 固定为 Device/0m、改用独立 Pose Anchor，并显式保持 raycast 世界命中位置，等待新版真机复验。
 - Depth 配置为 Optional；支持环境深度时请求遮挡，不支持时运行时降级，不限制普通 ARCore 设备安装。
+- 真机发现部分 ARCore 设备会把环境深度能力长期报告为 `Unknown`，同时逐帧产生 `Invalid depth`。当前仅在能力明确为 `Supported` 时启用遮挡；`Unknown/Unsupported` 均保守关闭，避免无效深度纹理把已正确放置的模型整体遮掉。需求 c 后续单独验收。
+- Live2D 整体包围盒可能包含低于鞋底的长发或裙摆，不能作为落地基准；当前使用模型 HitArea 已标注的左右腿 Drawable（`ArtMesh97/ArtMesh98`）最低点作为真实脚底，完整对齐 AR raycast/Anchor Pose。
 
 ### 必须在 ARCore 真机完成的验收
 
@@ -170,25 +174,11 @@ LuoTianyi.position = hitPose.position
        anchor
 ```
 
-### 我建议不要让 L2D 做完整 LookAt
+### 真机决策：使用保持世界上方向的完整 LookAt
 
-最自然的方式是 **cylindrical billboard**：
+早期方案采用 cylindrical billboard，只绕世界竖直轴转向手机；真机验证发现，手机俯仰查看桌面时仍会看到模型斜面或背面，不能满足“始终正对镜头”。
 
-只绕世界竖直轴转向手机，而不是完整 3D LookAt。
-
-即：
-
-\[
-\theta=\operatorname{atan2}(x_c-x_l,z_c-z_l)
-\]
-
-只设置：
-
-```text
-rotation.y = theta
-```
-
-而不修改 pitch / roll。
+当前改为完整 3D LookAt：令 Cubism 本地 `-Z` 始终指向相机，同时将世界竖直方向投影到模型平面作为本地 `Y`，从而跟随相机俯仰但不随手机横滚侧倒。模型以双脚中心为旋转枢轴，因此朝向变化不能改变落地点。
 
 结果是：
 

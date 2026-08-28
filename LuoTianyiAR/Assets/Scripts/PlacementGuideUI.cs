@@ -15,6 +15,7 @@ public class PlacementGuideUI : MonoBehaviour
     private ARRaycastManager raycastManager;
     private ARPlaneManager planeManager;
     private PlaceOnPlane placement;
+    private ARMarkerDiagnostics markerDiagnostics;
     private readonly List<ARRaycastHit> centerHits = new();
 
     private Texture2D pixel;
@@ -35,6 +36,7 @@ public class PlacementGuideUI : MonoBehaviour
         raycastManager = GetComponent<ARRaycastManager>();
         planeManager = GetComponent<ARPlaneManager>();
         placement = GetComponent<PlaceOnPlane>();
+        markerDiagnostics = GetComponent<ARMarkerDiagnostics>();
 
         pixel = new Texture2D(1, 1, TextureFormat.RGBA32, false);
         pixel.name = "PlacementGuidePixel";
@@ -58,6 +60,13 @@ public class PlacementGuideUI : MonoBehaviour
     {
         feedbackPosition = screenPosition;
         feedbackColor = WaitingColor;
+        feedbackStartedAt = Time.unscaledTime;
+    }
+
+    public void ShowGaze(Vector2 screenPosition)
+    {
+        feedbackPosition = screenPosition;
+        feedbackColor = ReadyColor;
         feedbackStartedAt = Time.unscaledTime;
     }
 
@@ -90,9 +99,15 @@ public class PlacementGuideUI : MonoBehaviour
         DrawCenterReticle(canPlaceAtCenter ? ReadyColor : WaitingColor);
         DrawTouchFeedback();
 
-        string hint = placement != null && placement.IsModelReady
-            ? "单指拖动到已识别平面  ·  双指捏合调整大小"
-            : "缓慢移动手机扫描地面或桌面，然后点击已识别位置";
+        string hint;
+        if (placement != null && placement.IsModelReady)
+            hint = placement.IsPositionLocked
+                ? "位置已锁定  ·  点击或单指滑动引导视线"
+                : "单指拖动位置  ·  双指捏合调整大小  ·  调整后锁定";
+        else if (markerDiagnostics != null && !markerDiagnostics.IsMarkerTracked)
+            hint = "先将完整的 120mm 定位卡放在桌面并移入画面";
+        else
+            hint = "定位卡已锁定；将中心准星对准桌面，变绿后可点击放置模型";
         if (Time.unscaledTime < transientUntil && !string.IsNullOrEmpty(transientMessage))
             hint = transientMessage;
 
@@ -135,6 +150,35 @@ public class PlacementGuideUI : MonoBehaviour
                 return;
         }
 
+        if ((placement == null || !placement.HasPlacedModel) && markerDiagnostics != null)
+        {
+            if (!markerDiagnostics.IsMarkerTracked)
+            {
+                title = markerDiagnostics.HasEverDetectedMarker ? "二维码定位卡追踪丢失" : "寻找二维码定位卡";
+                detail = "请对准整张 120mm 定位卡，确保边框、TOP 箭头和二维码都在画面内。";
+                color = WaitingColor;
+                return;
+            }
+
+            if (!markerDiagnostics.HasPlaneComparison)
+            {
+                title = "二维码定位卡已锁定";
+                detail = "图像空间位姿已建立，但卡片中心还没有匹配到水平面；请缓慢左右扫描桌面。";
+                color = WaitingColor;
+                return;
+            }
+
+            title = markerDiagnostics.PlaneComparisonPasses
+                ? "二维码与水平面一致"
+                : "二维码与水平面不一致";
+            detail =
+                $"高度误差 {markerDiagnostics.HeightErrorCentimeters:F1}cm，" +
+                $"法向误差 {markerDiagnostics.NormalErrorDegrees:F1}°，" +
+                $"平面内偏移 {markerDiagnostics.LateralErrorCentimeters:F1}cm；点击会将模型放到定位卡中心。";
+            color = markerDiagnostics.PlaneComparisonPasses ? ReadyColor : FailureColor;
+            return;
+        }
+
         if (planeCount == 0)
         {
             title = "正在寻找水平平面";
@@ -144,7 +188,9 @@ public class PlacementGuideUI : MonoBehaviour
         else if (placement == null || !placement.HasPlacedModel)
         {
             title = $"已识别 {planeCount} 个平面";
-            detail = canPlaceAtCenter ? "准星已变绿：点击屏幕放置洛天依。" : "将准星移到已识别的地面或桌面。";
+            detail = canPlaceAtCenter
+                ? "准星已变绿：点击屏幕确认，洛天依会出现在准星位置。"
+                : "移动手机，将中心准星对准已识别的地面或桌面。";
             color = canPlaceAtCenter ? ReadyColor : WaitingColor;
         }
         else if (placement.IsModelLoading)
@@ -161,8 +207,10 @@ public class PlacementGuideUI : MonoBehaviour
         }
         else
         {
-            title = "洛天依已放置";
-            detail = "可以绕她走动，也可以拖动位置或双指调整大小。";
+            title = placement.IsPositionLocked ? "洛天依位置已锁定" : "洛天依已放置";
+            detail = placement.IsPositionLocked
+                ? "位置和大小保持不变；点击或滑动屏幕可以引导她的视线。"
+                : "可以绕她走动，也可以继续拖动位置或双指调整大小。";
             color = ReadyColor;
         }
     }

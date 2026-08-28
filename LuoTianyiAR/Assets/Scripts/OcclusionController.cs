@@ -45,16 +45,18 @@ public class OcclusionController : MonoBehaviour
             yield return null;
 
         var support = occlusionManager.descriptor?.environmentDepthImageSupported ?? Supported.Unknown;
-        if (support == Supported.Unsupported)
+        // 对 P0 放置而言，错误的深度遮挡比没有遮挡更糟。部分 Android/ARCore
+        // 设备会长期返回 Unknown，同时不断产生 Invalid depth；若继续保留请求，
+        // 无效深度纹理可能把已经正确放置的模型整张遮掉。因此只有明确 Supported
+        // 才启用，其余状态都保守降级，后续可由专门的 Depth 验收再恢复。
+        if (support != Supported.Supported)
         {
             occlusionManager.requestedEnvironmentDepthMode = EnvironmentDepthMode.Disabled;
             occlusionManager.enabled = false;
-            Debug.Log("[Occlusion] 设备明确不支持环境深度 → OFF（优雅降级）");
+            Debug.Log($"[Occlusion] 环境深度能力为 {support} → OFF（保守降级，优先保证模型可见）");
             yield break;
         }
 
-        Debug.Log(support == Supported.Supported
-            ? "[Occlusion] 环境深度受支持 → ON"
-            : "[Occlusion] 深度能力仍未知，保留请求并由 AR Foundation 运行时降级");
+        Debug.Log("[Occlusion] 环境深度明确受支持 → ON");
     }
 }
