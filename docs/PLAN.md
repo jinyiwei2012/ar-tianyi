@@ -6,6 +6,15 @@
 
 ---
 
+## 当前状态快照（2026-08-27）
+
+- **Phase 0 已完成**：依赖、场景、构建、真机运行均就绪（历史"未完成"表述已修正）。
+- **Phase 1 主体完成**：ARScene 可运行，真机已验证模型显示、相机读取、放置 UI、平面识别与 Anchor。
+- **进行中**：`HANDOFF_AR_PLACEMENT.md`（debut 分支）记录的"模型不在准星位置"偏移问题。已实现中心准星模式 / 拖动阈值 / Placement Root / footCenter 完整 XYZ 对齐，等待真机复测。
+- **未开始**：Phase 2（移动）、Phase 3（遮挡）待排；`OcclusionController` 已含设备能力降级。
+
+---
+
 ## 需求回顾（PRD 优先级）
 
 | 需求 | 优先级 | 技术方案（PRD） |
@@ -19,16 +28,16 @@
 
 ---
 
-## Phase 0 — 工程基础（当前已完成 / 剩余 1 步）
+## Phase 0 — 工程基础（已完成）
 
 - [x] Unity 6000.3.22f1 + URP 17.3.0 工程
 - [x] Cubism SDK 5-r.5 导入（含 URP 渲染管线）
 - [x] 洛天依模型导入并生成 `model.prefab`
-- [ ] **安装 AR 依赖包**（下一步执行）
+- [x] **安装 AR 依赖包**
   - `com.unity.xr.arfoundation` 6.3.5
   - `com.unity.xr.arcore` 6.3.5（Android）
   - `com.unity.xr.management` 4.x（XR 管理）
-  - 通过 Package Manager 添加；国内网络需走代理（参考此前 Unity CDN 经验）
+  - 已配置 ARCore Loader + XR Simulation Loader（`Assets/XR/`）
 
 ## Phase 1 — 需求 a + b：放置到真实平面（MVP）
 
@@ -137,4 +146,6 @@
 
 ## 下一步行动
 
-立即执行 Phase 0 剩余步骤：安装 AR Foundation + ARCore XR Plugin 依赖包并验证编译通过。
+1. 真机安装最新 APK，开启 `enablePlacementDiagnosticMarkers`，按 HANDOFF 第 6 节做中心准星固定实验，收集 pose/reprojection 数据。
+2. 依据 HANDOFF 第 6 节判定表决定是否需要第 7 节二维码实验。
+3. 修复确认后，将定量结果回填 PRD 实现状态；不要继续维护旧的"未完成"表述。

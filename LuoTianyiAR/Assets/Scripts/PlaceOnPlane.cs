@@ -385,6 +385,34 @@ public class PlaceOnPlane : MonoBehaviour
         PlaceFeetOnAnchor();
     }
 
+    private void SpawnDiagnosticMarker(Vector3 worldPosition)
+    {
+        // 独立于 Live2D 的高可见基准：小球标记命中点 + 从地面向上 10cm 短线。
+        // 使用普通 URP primitive，避免 Cubism 渲染路径干扰；禁用 Collider 以免影响 raycast。
+        foreach (var marker in diagnosticMarkers)
+        {
+            if (marker != null)
+                Destroy(marker);
+        }
+        diagnosticMarkers.Clear();
+
+        var ball = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        ball.name = "Placement Diagnostic Ball";
+        ball.transform.position = worldPosition;
+        ball.transform.localScale = Vector3.one * 0.025f;
+        if (ball.TryGetComponent<Collider>(out var ballCollider))
+            ballCollider.enabled = false;
+        diagnosticMarkers.Add(ball);
+
+        var stick = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        stick.name = "Placement Diagnostic Stick";
+        stick.transform.position = worldPosition + Vector3.up * 0.05f;
+        stick.transform.localScale = new Vector3(0.004f, 0.1f, 0.004f);
+        if (stick.TryGetComponent<Collider>(out var stickCollider))
+            stickCollider.enabled = false;
+        diagnosticMarkers.Add(stick);
+    }
+
     private void PlaceFeetOnAnchor()
     {
         if (spawnedModel == null || modelPoseRoot == null || currentAnchor == null)
@@ -737,6 +765,12 @@ public class PlaceOnPlane : MonoBehaviour
         string boundsText = hasBounds
             ? $"center={bounds.center:F3}, size={bounds.size:F3}"
             : "invalid";
+        string placementText = hasPlacementSample
+            ? $"requestScreen={lastRequestScreenPoint:F1}, hitWorld={lastHitPosition:F3}, hitScreen={lastHitScreen:F1}, screenErrorPx={lastScreenErrorPx:F1}"
+            : "requestScreen=none";
+        string alignText = hasPlacementSample && placementRoot != null
+            ? $"root={placementRoot.transform.position:F3}, footCenter={lastFootCenter:F3}, anchor={lastAnchorPosition:F3}, alignErr={lastAlignmentError.magnitude * 1000f:F1}mm"
+            : "align=none";
         string anchorState = currentAnchor != null ? currentAnchor.trackingState.ToString() : "missing";
         string state = modelReady ? "ready" : IsModelLoading ? "loading" : "failed";
         string facingText = billboard != null && float.IsFinite(billboard.FrontFacingDot)
