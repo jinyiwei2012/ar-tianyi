@@ -40,6 +40,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     private ARCameraManager subscribedCameraManager;
     private AROcclusionManager occlusionManager;
     private OcclusionController occlusionController;
+    private ARMarkerDiagnostics markerDiagnostics;
     private ARSession arSession;
     private XROrigin xrOrigin;
     private int cameraFrameCount;
@@ -122,6 +123,8 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
             occlusionManager = FindFirstObjectByType<AROcclusionManager>(FindObjectsInactive.Include);
         if (occlusionController == null)
             occlusionController = FindFirstObjectByType<OcclusionController>(FindObjectsInactive.Include);
+        if (markerDiagnostics == null)
+            markerDiagnostics = FindFirstObjectByType<ARMarkerDiagnostics>(FindObjectsInactive.Include);
         if (arSession == null)
             arSession = FindFirstObjectByType<ARSession>(FindObjectsInactive.Include);
         if (xrOrigin == null)
