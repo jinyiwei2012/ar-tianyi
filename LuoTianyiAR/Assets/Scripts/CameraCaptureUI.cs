@@ -26,7 +26,11 @@ public sealed class CameraCaptureUI : MonoBehaviour
     private static Rect debugButtonRect;
     private static Rect harmonizationButtonRect;
     private static Rect manualLightButtonRect;
+    private static Rect multiplyBlendButtonRect;
+    private static Rect edgeBlurButtonRect;
     private static Rect manualLightMenuRect;
+    private static Rect multiplyBlendMenuRect;
+    private static Rect edgeBlurMenuRect;
     private static Rect manualCalibrationPanelRect;
 
     private PlaceOnPlane placement;
@@ -44,6 +48,7 @@ public sealed class CameraCaptureUI : MonoBehaviour
     private Texture2D expressionIcon;
     private Texture2D manualLightAddIcon;
     private Texture2D manualLightReadyIcon;
+    private Texture2D paintBrushIcon;
     private Texture2D pixel;
     private Texture2D lastThumbnail;
     private GUIStyle titleStyle;
@@ -60,6 +65,8 @@ public sealed class CameraCaptureUI : MonoBehaviour
     private bool isCapturing;
     private bool isSwitchingCamera;
     private bool showManualLightMenu;
+    private bool showMultiplyBlendMenu;
+    private bool showEdgeBlurMenu;
     private string operationStatus = "平面定位";
     private float statusUntil;
     private float flashStartedAt = -10f;
@@ -70,7 +77,9 @@ public sealed class CameraCaptureUI : MonoBehaviour
     public static bool IsManualLightCalibrationActive =>
         instance != null && instance.harmonization != null && instance.harmonization.IsManualCalibrationActive;
     public static bool IsManualLightEditing =>
-        instance != null && (instance.showManualLightMenu || IsManualLightCalibrationActive);
+        instance != null &&
+        (instance.showManualLightMenu || instance.showMultiplyBlendMenu || instance.showEdgeBlurMenu ||
+         IsManualLightCalibrationActive);
 
     private void Awake()
     {
@@ -95,6 +104,7 @@ public sealed class CameraCaptureUI : MonoBehaviour
         expressionIcon = CreateExpressionIcon();
         manualLightAddIcon = CreateManualLightIcon(false);
         manualLightReadyIcon = CreateManualLightIcon(true);
+        paintBrushIcon = CreatePaintBrushIcon();
         pixel = new Texture2D(1, 1, TextureFormat.RGBA32, false);
         pixel.SetPixel(0, 0, Color.white);
         pixel.Apply();
@@ -128,7 +138,9 @@ public sealed class CameraCaptureUI : MonoBehaviour
                thumbnailRect.Contains(guiPoint) || expressionButtonRect.Contains(guiPoint) ||
                debugButtonRect.Contains(guiPoint) ||
                harmonizationButtonRect.Contains(guiPoint) || manualLightButtonRect.Contains(guiPoint) ||
-               manualLightMenuRect.Contains(guiPoint) || manualCalibrationPanelRect.Contains(guiPoint);
+               multiplyBlendButtonRect.Contains(guiPoint) || edgeBlurButtonRect.Contains(guiPoint) ||
+               manualLightMenuRect.Contains(guiPoint) || multiplyBlendMenuRect.Contains(guiPoint) ||
+               edgeBlurMenuRect.Contains(guiPoint) || manualCalibrationPanelRect.Contains(guiPoint);
     }
 
     private void OnGUI()
@@ -145,7 +157,11 @@ public sealed class CameraCaptureUI : MonoBehaviour
             debugButtonRect = Rect.zero;
             harmonizationButtonRect = Rect.zero;
             manualLightButtonRect = Rect.zero;
+            multiplyBlendButtonRect = Rect.zero;
+            edgeBlurButtonRect = Rect.zero;
             manualLightMenuRect = Rect.zero;
+            multiplyBlendMenuRect = Rect.zero;
+            edgeBlurMenuRect = Rect.zero;
             manualCalibrationPanelRect = Rect.zero;
             return;
         }
@@ -161,12 +177,21 @@ public sealed class CameraCaptureUI : MonoBehaviour
         float scale = Mathf.Clamp(Screen.width / 1260f, 0.75f, 1.5f);
         DrawHarmonizationButton(topBarRect, scale);
         DrawManualLightButton(topBarRect, scale);
+        DrawMultiplyBlendButton(topBarRect, scale);
+        DrawEdgeBlurButton(topBarRect, scale);
         DrawDebugButton(topBarRect, scale);
 
         DrawSolid(new Rect(0f, viewfinder.y, Screen.width, 2f), new Color(1f, 1f, 1f, 0.16f));
         DrawSolid(new Rect(0f, viewfinder.yMax - 2f, Screen.width, 2f), new Color(1f, 1f, 1f, 0.16f));
         DrawBottomControls(bottomBarRect, scale);
         DrawManualLightMenu(scale);
+
+        // 工具二级菜单必须覆盖放置状态提示（PlacementGuideUI depth=100），
+        // 同时保留位置锁和调试面板在更高层。
+        GUI.depth = 0;
+        DrawMultiplyBlendMenu(scale);
+        DrawEdgeBlurMenu(scale);
+        GUI.depth = 900;
         DrawManualLightCalibration(viewfinder, scale);
         DrawCaptureFlash(viewfinder);
     }
@@ -216,6 +241,8 @@ public sealed class CameraCaptureUI : MonoBehaviour
         GUI.enabled = canInteract;
         if (GUI.Button(manualLightButtonRect, GUIContent.none, GUIStyle.none))
         {
+            showMultiplyBlendMenu = false;
+            showEdgeBlurMenu = false;
             if (harmonization != null && harmonization.HasManualLight)
             {
                 showManualLightMenu = !showManualLightMenu;
@@ -249,6 +276,78 @@ public sealed class CameraCaptureUI : MonoBehaviour
             GUI.DrawTexture(visualRect, icon, ScaleMode.ScaleToFit, true);
             GUI.color = previous;
         }
+    }
+
+    private void DrawMultiplyBlendButton(Rect topBar, float scale)
+    {
+        float buttonSize = GetToolbarButtonSize(topBar, scale);
+        multiplyBlendButtonRect = new Rect(
+            manualLightButtonRect.xMax + 72f * scale,
+            manualLightButtonRect.y,
+            buttonSize,
+            buttonSize);
+
+        GUI.enabled = !isCapturing && !isSwitchingCamera && !RuntimeDebugPanel.IsOpen &&
+                      !IsManualLightCalibrationActive;
+        if (GUI.Button(multiplyBlendButtonRect, GUIContent.none, GUIStyle.none))
+        {
+            showMultiplyBlendMenu = !showMultiplyBlendMenu;
+            showManualLightMenu = false;
+            showEdgeBlurMenu = false;
+        }
+        GUI.enabled = true;
+
+        if (paintBrushIcon != null)
+        {
+            Color previous = GUI.color;
+            GUI.color = harmonization != null && harmonization.IsMultiplyBlendEnabled
+                ? new Color(1f, 0.78f, 0.10f, 1f)
+                : Color.white;
+            float visualSize = buttonSize * 1.586f;
+            GUI.DrawTexture(
+                CenteredRect(multiplyBlendButtonRect, visualSize),
+                paintBrushIcon,
+                ScaleMode.ScaleToFit,
+                true);
+            GUI.color = previous;
+        }
+    }
+
+    private void DrawEdgeBlurButton(Rect topBar, float scale)
+    {
+        float buttonSize = GetToolbarButtonSize(topBar, scale);
+        edgeBlurButtonRect = new Rect(
+            multiplyBlendButtonRect.xMax + 72f * scale,
+            multiplyBlendButtonRect.y,
+            buttonSize,
+            buttonSize);
+
+        GUI.enabled = !isCapturing && !isSwitchingCamera && !RuntimeDebugPanel.IsOpen &&
+                      !IsManualLightCalibrationActive;
+        if (GUI.Button(edgeBlurButtonRect, GUIContent.none, GUIStyle.none))
+        {
+            showEdgeBlurMenu = !showEdgeBlurMenu;
+            showManualLightMenu = false;
+            showMultiplyBlendMenu = false;
+        }
+        GUI.enabled = true;
+
+        Color previous = harmonizationStyle.normal.textColor;
+        harmonizationStyle.normal.textColor = harmonization != null && harmonization.IsEdgeBlurEnabled
+            ? new Color(1f, 0.78f, 0.10f, 1f)
+            : Color.white;
+        float visualSize = buttonSize * 1.586f;
+        GUI.Label(CenteredRect(edgeBlurButtonRect, visualSize), "B", harmonizationStyle);
+        harmonizationStyle.normal.textColor = previous;
+    }
+
+    private static Rect CenteredRect(Rect source, float size)
+    {
+        return new Rect(
+            source.center.x - size * 0.5f,
+            source.center.y - size * 0.5f,
+            size,
+            size);
     }
 
     private void DrawManualLightMenu(float scale)
@@ -368,6 +467,171 @@ public sealed class CameraCaptureUI : MonoBehaviour
             showManualLightMenu = false;
             ShowStatus("已恢复 ARCore 自动主光", 3f);
         }
+    }
+
+    private void DrawMultiplyBlendMenu(float scale)
+    {
+        if (!showMultiplyBlendMenu || harmonization == null || RuntimeDebugPanel.IsOpen ||
+            IsManualLightCalibrationActive)
+        {
+            multiplyBlendMenuRect = Rect.zero;
+            return;
+        }
+
+        float toolbarIconSize = GetToolbarButtonSize(topBarRect, scale);
+        float width = Mathf.Min(Screen.width - 24f * scale, 1120f * scale);
+        float height = 410f * scale;
+        multiplyBlendMenuRect = new Rect(
+            Mathf.Clamp(multiplyBlendButtonRect.x, 12f, Screen.width - width - 12f),
+            topBarRect.yMax + 12f * scale,
+            width,
+            height);
+        DrawSolid(multiplyBlendMenuRect, new Color(0.015f, 0.02f, 0.025f, 0.90f));
+        ConfigureToolMenuStyles(toolbarIconSize, scale);
+
+        float horizontalPadding = 24f * scale;
+        float labelWidth = 410f * scale;
+        float rowHeight = Mathf.Max(100f * scale, toolbarIconSize);
+        float rowGap = 28f * scale;
+        float sliderGap = 24f * scale;
+        float controlX = multiplyBlendMenuRect.x + horizontalPadding + labelWidth + sliderGap;
+        float controlWidth = multiplyBlendMenuRect.xMax - horizontalPadding - controlX;
+        float firstRowY = multiplyBlendMenuRect.y + 18f * scale;
+
+        Rect LabelRect(float rowY) => new(
+            multiplyBlendMenuRect.x + horizontalPadding,
+            rowY,
+            labelWidth,
+            rowHeight);
+        Rect ControlRect(float rowY) => new(controlX, rowY, controlWidth, rowHeight);
+
+        GUI.Label(LabelRect(firstRowY), "正片叠底", manualLightParameterStyle);
+        bool enabled = DrawLargeSwitch(
+            ControlRect(firstRowY),
+            harmonization.IsMultiplyBlendEnabled,
+            scale);
+        harmonization.SetMultiplyBlendEnabled(enabled);
+
+        float secondRowY = firstRowY + rowHeight + rowGap;
+        GUI.Label(
+            LabelRect(secondRowY),
+            $"强度 {harmonization.MultiplyBlendStrength:F2}",
+            manualLightParameterStyle);
+        float strength = GUI.HorizontalSlider(
+            ControlRect(secondRowY),
+            harmonization.MultiplyBlendStrength,
+            0f,
+            1f,
+            manualLightSliderStyle,
+            manualLightSliderThumbStyle);
+        harmonization.SetMultiplyBlendStrength(strength);
+
+        float thirdRowY = secondRowY + rowHeight + rowGap;
+        GUI.Label(
+            LabelRect(thirdRowY),
+            $"亮度 {harmonization.MultiplyBrightnessAdjustment:F2}",
+            manualLightParameterStyle);
+        float brightness = GUI.HorizontalSlider(
+            ControlRect(thirdRowY),
+            harmonization.MultiplyBrightnessAdjustment,
+            0.5f,
+            1.5f,
+            manualLightSliderStyle,
+            manualLightSliderThumbStyle);
+        harmonization.SetMultiplyBrightnessAdjustment(brightness);
+    }
+
+    private void DrawEdgeBlurMenu(float scale)
+    {
+        if (!showEdgeBlurMenu || harmonization == null || RuntimeDebugPanel.IsOpen ||
+            IsManualLightCalibrationActive)
+        {
+            edgeBlurMenuRect = Rect.zero;
+            return;
+        }
+
+        float toolbarIconSize = GetToolbarButtonSize(topBarRect, scale);
+        float width = Mathf.Min(Screen.width - 24f * scale, 1120f * scale);
+        float height = 282f * scale;
+        edgeBlurMenuRect = new Rect(
+            Mathf.Clamp(edgeBlurButtonRect.x, 12f, Screen.width - width - 12f),
+            topBarRect.yMax + 12f * scale,
+            width,
+            height);
+        DrawSolid(edgeBlurMenuRect, new Color(0.015f, 0.02f, 0.025f, 0.90f));
+        ConfigureToolMenuStyles(toolbarIconSize, scale);
+
+        float horizontalPadding = 24f * scale;
+        float labelWidth = 410f * scale;
+        float rowHeight = Mathf.Max(100f * scale, toolbarIconSize);
+        float rowGap = 28f * scale;
+        float sliderGap = 24f * scale;
+        float controlX = edgeBlurMenuRect.x + horizontalPadding + labelWidth + sliderGap;
+        float controlWidth = edgeBlurMenuRect.xMax - horizontalPadding - controlX;
+        float firstRowY = edgeBlurMenuRect.y + 18f * scale;
+
+        Rect LabelRect(float rowY) => new(
+            edgeBlurMenuRect.x + horizontalPadding,
+            rowY,
+            labelWidth,
+            rowHeight);
+        Rect ControlRect(float rowY) => new(controlX, rowY, controlWidth, rowHeight);
+
+        GUI.Label(LabelRect(firstRowY), "轮廓模糊", manualLightParameterStyle);
+        bool enabled = DrawLargeSwitch(
+            ControlRect(firstRowY),
+            harmonization.IsEdgeBlurEnabled,
+            scale);
+        harmonization.SetEdgeBlurEnabled(enabled);
+
+        float secondRowY = firstRowY + rowHeight + rowGap;
+        GUI.Label(
+            LabelRect(secondRowY),
+            $"强度 {harmonization.EdgeBlurStrength:F2}",
+            manualLightParameterStyle);
+        float strength = GUI.HorizontalSlider(
+            ControlRect(secondRowY),
+            harmonization.EdgeBlurStrength,
+            0f,
+            1f,
+            manualLightSliderStyle,
+            manualLightSliderThumbStyle);
+        harmonization.SetEdgeBlurStrength(strength);
+    }
+
+    private void ConfigureToolMenuStyles(float toolbarIconSize, float scale)
+    {
+        manualLightParameterStyle.fontSize = Mathf.RoundToInt(toolbarIconSize);
+        manualLightSliderStyle.fixedHeight = 14f * scale;
+        manualLightSliderThumbStyle.fixedWidth = toolbarIconSize;
+        manualLightSliderThumbStyle.fixedHeight = toolbarIconSize;
+    }
+
+    private bool DrawLargeSwitch(Rect controlRect, bool value, float scale)
+    {
+        float switchWidth = Mathf.Min(controlRect.width, 190f * scale);
+        float switchHeight = Mathf.Min(controlRect.height * 0.68f, 72f * scale);
+        Rect switchRect = new(
+            controlRect.xMax - switchWidth,
+            controlRect.center.y - switchHeight * 0.5f,
+            switchWidth,
+            switchHeight);
+        if (GUI.Button(switchRect, GUIContent.none, GUIStyle.none))
+            value = !value;
+
+        DrawSolid(
+            switchRect,
+            value ? new Color(1f, 0.70f, 0.08f, 1f) : new Color(0.26f, 0.28f, 0.30f, 1f));
+        float thumbSize = switchHeight - 12f * scale;
+        Rect thumbRect = new(
+            value
+                ? switchRect.xMax - thumbSize - 6f * scale
+                : switchRect.x + 6f * scale,
+            switchRect.center.y - thumbSize * 0.5f,
+            thumbSize,
+            thumbSize);
+        DrawSolid(thumbRect, Color.white);
+        return value;
     }
 
     private void DrawManualLightCalibration(Rect viewfinder, float scale)
@@ -1266,6 +1530,57 @@ public sealed class CameraCaptureUI : MonoBehaviour
         return texture;
     }
 
+    private static Texture2D CreatePaintBrushIcon()
+    {
+        const int size = 96;
+        var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            name = "EnvironmentPaintBrushIcon",
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        var pixels = new Color32[size * size];
+        Color32 transparent = new(255, 255, 255, 0);
+        Color32 solid = new(255, 255, 255, 255);
+        for (int i = 0; i < pixels.Length; i++)
+            pixels[i] = transparent;
+
+        Vector2 handleStart = new(0.20f, 0.18f);
+        Vector2 handleEnd = new(0.60f, 0.58f);
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                Vector2 point = new(x / (float)(size - 1), y / (float)(size - 1));
+                float handleDistance = DistanceToSegment(point, handleStart, handleEnd);
+                float diagonal = point.y - point.x;
+                bool handle = handleDistance < 0.065f;
+                bool ferrule = point.x >= 0.50f && point.x <= 0.70f &&
+                               point.y >= 0.48f && point.y <= 0.72f &&
+                               Mathf.Abs(diagonal) < 0.14f;
+                bool bristles = point.x >= 0.63f && point.y >= 0.61f &&
+                                point.x + point.y <= 1.70f &&
+                                Mathf.Abs(diagonal) < 0.22f;
+                if (handle || ferrule || bristles)
+                    pixels[y * size + x] = solid;
+            }
+        }
+
+        texture.SetPixels32(pixels);
+        texture.Apply(false, true);
+        return texture;
+    }
+
+    private static float DistanceToSegment(Vector2 point, Vector2 start, Vector2 end)
+    {
+        Vector2 segment = end - start;
+        float lengthSquared = segment.sqrMagnitude;
+        if (lengthSquared < 0.000001f)
+            return Vector2.Distance(point, start);
+        float t = Mathf.Clamp01(Vector2.Dot(point - start, segment) / lengthSquared);
+        return Vector2.Distance(point, start + segment * t);
+    }
+
     private void DrawSolid(Rect rect, Color color)
     {
         if (pixel == null)
@@ -1298,6 +1613,8 @@ public sealed class CameraCaptureUI : MonoBehaviour
             Destroy(manualLightAddIcon);
         if (manualLightReadyIcon != null)
             Destroy(manualLightReadyIcon);
+        if (paintBrushIcon != null)
+            Destroy(paintBrushIcon);
     }
 
     [Serializable]

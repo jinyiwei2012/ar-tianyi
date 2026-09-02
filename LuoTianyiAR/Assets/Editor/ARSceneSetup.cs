@@ -27,8 +27,13 @@ public static class ARSceneSetup
         // 新建场景
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-        // 1. AR Session (ARSession + ARInputManager)
-        var sessionGo = ObjectFactory.CreateGameObject("AR Session", typeof(ARSession), typeof(ARInputManager));
+        // 1. 先挂权限门控，再创建 AR Session。首次启动时主动申请 Android CAMERA
+        // 运行时权限，并在授权前阻止 ARCore 抢先初始化相机。
+        var sessionGo = ObjectFactory.CreateGameObject(
+            "AR Session",
+            typeof(AndroidCameraPermissionGate),
+            typeof(ARSession),
+            typeof(ARInputManager));
 
         // 2. XR Origin
         var originGo = ObjectFactory.CreateGameObject("XR Origin", typeof(XROrigin));
@@ -123,6 +128,12 @@ public static class ARSceneSetup
     public static void ConfigureCameraExperience()
     {
         var scene = EditorSceneManager.OpenScene(ScenePath);
+        var session = Object.FindFirstObjectByType<ARSession>(FindObjectsInactive.Include);
+        if (session == null)
+            throw new System.InvalidOperationException("[ARSceneSetup] 未找到 ARSession");
+        if (session.GetComponent<AndroidCameraPermissionGate>() == null)
+            session.gameObject.AddComponent<AndroidCameraPermissionGate>();
+
         var originGo = GameObject.Find("XR Origin");
         if (originGo == null)
             throw new System.InvalidOperationException("[ARSceneSetup] 未找到 XR Origin");

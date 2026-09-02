@@ -130,6 +130,7 @@ GameObject:
   - component: {fileID: 966964079}
   - component: {fileID: 966964078}
   - component: {fileID: 966964077}
+  - component: {fileID: 966964080}
   m_Layer: 0
   m_Name: AR Session
   m_TagString: Untagged
@@ -179,6 +180,18 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &966964080
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 966964076}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7e2d8f14aa6e4b448eb730c032fdf3a1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::AndroidCameraPermissionGate
 --- !u!1 &1143887032
 GameObject:
   m_ObjectHideFlags: 0
@@ -367,13 +380,17 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 352b80600eb3c1a45a282780b2d82472, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AutoHarmonizationController
   harmonizationEnabled: 1
-  correctionStrength: 0.72
   responseSpeed: 5
   minimumBrightness: 0.48
   maximumBrightness: 1.35
+  multiplyBlendEnabled: 1
+  multiplyBlendStrength: 0.72
+  multiplyBrightnessAdjustment: 1
+  edgeBlurEnabled: 0
+  edgeBlurStrength: 0.35
   manualKeyStrength: 0.36
   manualAmbientInfluence: 0.45
   manualMinimumBrightness: 0.82

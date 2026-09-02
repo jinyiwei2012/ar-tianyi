@@ -331,6 +331,14 @@ public static class AndroidBuild
 
     private static void ValidateARCameraRenderingMode()
     {
+        var permissionGate = UnityEngine.Object.FindFirstObjectByType<AndroidCameraPermissionGate>(
+            FindObjectsInactive.Include);
+        if (permissionGate == null || !permissionGate.enabled)
+        {
+            throw new BuildFailedException(
+                "[AndroidBuild] 场景缺少已启用的 Android CAMERA 运行时权限门控");
+        }
+
         var cameraManager = UnityEngine.Object.FindFirstObjectByType<ARCameraManager>(FindObjectsInactive.Include);
         if (cameraManager == null)
             throw new BuildFailedException("[AndroidBuild] 场景缺少 ARCameraManager");

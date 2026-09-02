@@ -118,6 +118,25 @@ public class PlacementGuideUI : MonoBehaviour
 
     private void GetStatus(out string title, out string detail, out Color color)
     {
+        if (AndroidCameraPermissionGate.IsWaitingForDecision)
+        {
+            title = "需要相机权限";
+            detail = "请在系统弹窗中允许相机权限，授权后将自动启动 AR。";
+            color = WaitingColor;
+            return;
+        }
+
+        if (AndroidCameraPermissionGate.IsPermissionDenied)
+        {
+            title = "相机权限未授予";
+            detail = AndroidCameraPermissionGate.State ==
+                     AndroidCameraPermissionGate.PermissionState.DeniedDontAskAgain
+                ? "请前往系统设置，为 LuoTianyiAR 开启相机权限后重新进入应用。"
+                : "请允许相机权限后重新进入应用。";
+            color = FailureColor;
+            return;
+        }
+
         int planeCount = planeManager != null ? planeManager.trackables.count : 0;
         switch (ARSession.state)
         {

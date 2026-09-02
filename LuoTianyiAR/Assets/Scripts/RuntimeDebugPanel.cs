@@ -40,6 +40,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     private ARCameraManager subscribedCameraManager;
     private AROcclusionManager occlusionManager;
     private ARSession arSession;
+    private AndroidCameraPermissionGate cameraPermissionGate;
     private XROrigin xrOrigin;
     private int cameraFrameCount;
     private int lastCameraTextureCount;
@@ -121,6 +122,8 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
             occlusionManager = FindFirstObjectByType<AROcclusionManager>(FindObjectsInactive.Include);
         if (arSession == null)
             arSession = FindFirstObjectByType<ARSession>(FindObjectsInactive.Include);
+        if (cameraPermissionGate == null)
+            cameraPermissionGate = FindFirstObjectByType<AndroidCameraPermissionGate>(FindObjectsInactive.Include);
         if (xrOrigin == null)
             xrOrigin = FindFirstObjectByType<XROrigin>(FindObjectsInactive.Include);
         if (!arCorePackageVersionResolved)
@@ -179,9 +182,12 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
 
     private void CheckCameraFrameHealth()
     {
+        float permissionGrantedAt = AndroidCameraPermissionGate.PermissionGrantedAtRealtime;
+        float cameraHealthStartedAt = Mathf.Max(cameraReferenceSeenAt, permissionGrantedAt);
         if (cameraFrameTimeoutReported || cameraManager == null || !cameraManager.enabled ||
-            !cameraManager.permissionGranted || cameraReferenceSeenAt < 0f ||
-            Time.unscaledTime - cameraReferenceSeenAt < 10f || cameraFrameCount > 0)
+            AndroidCameraPermissionGate.IsPermissionBlocking || !cameraManager.permissionGranted ||
+            cameraHealthStartedAt < 0f || Time.unscaledTime - cameraHealthStartedAt < 10f ||
+            cameraFrameCount > 0)
         {
             return;
         }
@@ -473,6 +479,13 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     private string BuildCameraDiagnosis()
     {
         RefreshReferences();
+        if (AndroidCameraPermissionGate.IsWaitingForDecision)
+            return "正在等待用户授予 Android CAMERA 运行时权限，AR 链路尚未启动。";
+        if (AndroidCameraPermissionGate.IsPermissionDenied)
+            return AndroidCameraPermissionGate.State ==
+                   AndroidCameraPermissionGate.PermissionState.DeniedDontAskAgain
+                ? "当前异常：相机权限被永久拒绝，请在系统设置中手动授权。"
+                : "当前异常：用户拒绝了相机权限，请授权后重新进入应用。";
         if (cameraRecoveryInProgress)
             return $"正在执行第 {cameraRecoveryAttemptCount} 次相机链路重启，请等待相机帧恢复。";
         if (unityCamera == null)
@@ -540,6 +553,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         report.AppendLine("--- AR ---");
         report.AppendLine($"Session: state={ARSession.state}, reason={ARSession.notTrackingReason}");
         report.AppendLine($"Google Play Services for AR: {arCorePackageVersion}");
+        report.AppendLine($"Camera permission gate: {AndroidCameraPermissionGate.GetDebugSummary()}");
         report.AppendLine($"ARSession component: present={arSession != null}, enabled={arSession != null && arSession.enabled}");
         string xrOffset = xrOrigin != null && xrOrigin.CameraFloorOffsetObject != null
             ? xrOrigin.CameraFloorOffsetObject.transform.localPosition.ToString("F3")
